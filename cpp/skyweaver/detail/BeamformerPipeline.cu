@@ -1,4 +1,4 @@
-#include "sky_weaver/OfflinePipeline.cuh"
+#include "skyweaver/BeamformerPipeline.cuh"
 
 #include "psrdada_cpp/Header.hpp"
 #include "psrdada_cpp/cuda_utils.hpp"
@@ -12,7 +12,110 @@
 #define FBFUSE_SAMPLE_CLOCK_KEY "SAMPLE_CLOCK"
 #define FBFUSE_SYNC_TIME_KEY "SYNC_TIME"
 
-namespace sky_weaver {
+
+/*
+According to dmsmear for COMPACT we need something like a 8192 sample kernel for 
+filter. This is even smaller for BVRUSE due to the high frequency.
+
+For memory purposes we assume we are working on a 64 channel subband
+and that there are 64 antennas in the array. 
+
+---- Pseudocode pipeline ----
+
+data_loader = DataLoader(bunch of files)
+
+input_buffer = OverlapSaveBuffer(overlap)
+
+output_buffer = DedispersingOutputBuffer(???)
+
+dedisperser = Dedisperser(???)
+
+data_loader.seek(to time that I care about);
+while data_loader.tell() < time that I want to end at:
+    
+    block = data_loader.load_block(nbytes)
+
+    input_buffer.write(block) # includes copy to GPU
+
+    block_to_process = input_buffer.read() # this is memory on the GPU
+
+    # Transpose TAFTP to ATFP or AFPT whichever dspsr prefers
+
+    >>>> Minimum Memory: 64 * 64 * 2 * 2 * 8192 * (1+4) = ~0.6-0.7 GB 
+    >>>> assumes that we need a char and float copy in memory at the same time
+
+    # get delays for timestamp if new set needed
+
+    # make weights from delays always
+
+    # recalculate scalings is new set needed (see delay model flags)
+
+    for dm in dms:
+        dedisperser.set_dm(dm)
+
+        for ii, antenna in enumerate(antennas):
+            dedispersed_antenna = dedisperser.dedisperse(block_to_process[ii])
+
+        >>>> Minimum Memory: 64 * 64 * 2 * 2 * 8192 * 4 = 0.5 GB
+        >>>> This is in addition to the input buffers so we are at 1 GB
+        >>>> now 
+
+        # Transpose AFPT (or whatever) to beamformer order FTPA
+        >>>> Minimum Memory: 64 * 64 * 2 * 2 * 8192 * 1 = 0.1 GB
+        >>>> We need to go back to 8 bit here otherwise the beamformer
+        >>>> will not work.
+        >>>> At 1.1 GB total now.
+
+        # Form beams
+        >>>>> Minimum Memory: 800 * 64 * 1 * 8192/4 = 100 MB
+        >>>>> At this point we are using < 2 GB of memory
+        
+        output_buffer.write(beams) 
+
+        # in the output buffer we dedisperse somehow
+        # for a worst case DM of 1000 we have a delay of almost a second
+        # this would require 4 times the length of data for the lowest frequency
+        # band. Also if we want to do this on the GPU then all DM trials need
+        # to be on GPU memory (is this actually true, with good overlap this 
+        # doesn't matter and we can use dedisp). With all trials and the extra 
+        # time it is 160 times the memory requirement here. Something like 16 GB.
+
+        [NOTE] Dedisp doesn't work with 8 bit data
+
+        # copy beams back to host 
+
+        # Alternative option incoherent dedisperse on host with FDMT or whatever.
+
+
+-- To be implemented
+ - Data loader -> vvk
+ - Input buffer + GPU copy -> vvk
+ - Dedispersion code (waiting for input from Willem)
+ - Delay and weight management -> eb
+ - Updated coherent beamformer -> eb
+ - Updated 32-bit incoherent beamformer -> eb
+
+
+
+    
+    
+    
+
+
+
+
+
+
+
+
+
+
+
+*/
+
+
+
+namespace skyweaver {
 
 template<typename CBHandler, typename IBHandler>
 OfflinePipeline<CBHandler, IBHandler>::OfflinePipeline(PipelineConfig const& config,
@@ -273,4 +376,4 @@ bool OfflinePipeline<CBHandler, IBHandler>::operator()(RawBytes& data)
     return false;
 }
 
-} //namespace sky_weaver
+} //namespace skyweaver

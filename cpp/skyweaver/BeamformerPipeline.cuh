@@ -1,15 +1,15 @@
-#ifndef SKY_WEAVER_OFFLINEPIPELINE_CUH
-#define SKY_WEAVER_OFFLINEPIPELINE_CUH
+#ifndef SKYWEAVER_BEAMFORMERPIPELINE_CUH
+#define SKYWEAVER_BEAMFORMERPIPELINE_CUH
 
-#include "sky_weaver/cpp/fbfuse/PipelineConfig.hpp"
-#include "sky_weaver/cpp/fbfuse/DelayManager.cuh"
-#include "sky_weaver/cpp/fbfuse/WeightsManager.cuh"
-#include "sky_weaver/cpp/fbfuse/GainManager.cuh"
-#include "sky_weaver/cpp/fbfuse/ChannelScalingManager.cuh"
-#include "sky_weaver/cpp/fbfuse/SplitTranspose.cuh"
-#include "sky_weaver/cpp/fbfuse/CoherentBeamformer.cuh"
-#include "sky_weaver/cpp/fbfuse/IncoherentBeamformer.cuh"
-#include "sky_weaver/cpp/fbfuse/VoltageScaling.cuh"
+#include "skyweaver/cpp/fbfuse/PipelineConfig.hpp"
+#include "skyweaver/cpp/fbfuse/DelayManager.cuh"
+#include "skyweaver/cpp/fbfuse/WeightsManager.cuh"
+#include "skyweaver/cpp/fbfuse/GainManager.cuh"
+#include "skyweaver/cpp/fbfuse/ChannelScalingManager.cuh"
+#include "skyweaver/cpp/fbfuse/SplitTranspose.cuh"
+#include "skyweaver/cpp/fbfuse/CoherentBeamformer.cuh"
+#include "skyweaver/cpp/fbfuse/IncoherentBeamformer.cuh"
+#include "skyweaver/cpp/fbfuse/VoltageScaling.cuh"
 
 #include "psrdada_cpp/dada_write_client.hpp"
 #include "psrdada_cpp/double_device_buffer.cuh"
@@ -17,13 +17,13 @@
 #include "cuda.h"
 #include <memory>
 
-namespace sky_weaver {
+namespace skyweaver {
 
 /**
  * @brief      Offline beamforming pipeline
  */
 template<typename CBHandler, typename IBHandler>
-class OfflinePipeline
+class BeamformerPipeline
 {
 public:
     typedef thrust::device_vector<char2> VoltageVectorType;
@@ -40,12 +40,12 @@ public:
      * @param      ib_handler               DADA write client for output incoherent beam data buffer
      * @param[in]  input_data_buffer_size  The input DADA buffer block size
      */
-    OfflinePipeline(PipelineConfig const& config,
+    BeamformerPipeline(PipelineConfig const& config,
         CBHandler& cb_handler,
         IBHandler& ib_handler,
         std::size_t input_data_buffer_size);
-    ~OfflinePipeline();
-    OfflinePipeline(Pipeline const&) = delete;
+    ~BeamformerPipeline();
+    BeamformerPipeline(Pipeline const&) = delete;
 
     /**
      * @brief      Initialise the pipeline with a DADA header block
@@ -108,8 +108,8 @@ private:
     ChannelScaleVectorType _channel_scalings;
 };
 
-} //namespace sky_weaver
+} //namespace skyweaver
 
-#include "sky_weaver/cpp/fbfuse/detail/OfflinePipeline.cuh"
+#include "skyweaver/cpp/fbfuse/detail/BeamformerPipeline.cuh"
 
-#endif //SKY_WEAVER_OFFLINEPIPELINE_CUH
+#endif //SKYWEAVER_BEAMFORMERPIPELINE_CUH
