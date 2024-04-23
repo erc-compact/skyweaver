@@ -14,8 +14,6 @@ cpp/build/
 build/
 release/
 dist/
-eddpaf.egg-info/
-cryopaf/data/
 .vscode/
 
 # temps
