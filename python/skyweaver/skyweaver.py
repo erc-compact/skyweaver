@@ -27,6 +27,14 @@ from mosaic.beamforming import (
 
 log = logging.getLogger("skyweaver")
 
+# TODO: Change this so that the delay model is structure as:
+# -- File Header --
+# -- Antenna weights --
+# -- Delay model header --
+# -- Delays --
+# -- Delay model header --
+# -- Delays --
+# ...
 
 class DelayModelHeader(ctypes.Structure):
     """Structure for packing delay model information
@@ -42,8 +50,6 @@ class DelayModelHeader(ctypes.Structure):
         ("start_epoch", ctypes.c_double),
         # UNIX epoch of end of delay model validity
         ("end_epoch", ctypes.c_double),
-        # Flag notifying that the antenna weights have changed
-        ("weights_update", ctypes.c_uint8)
     ]
 
 

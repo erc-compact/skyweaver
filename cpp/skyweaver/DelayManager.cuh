@@ -22,17 +22,16 @@ class InvalidDelayEpoch : public std::exception {
         }
 };
 
-struct DelayFileHeader
-{
-    uint32_t version;
-    uint32_t nantennas;
-    uint32_t nbeams;
-};
-
+/**
+ * @brief A struct wrapping the header of each delay model in the delay file
+ * 
+ */
 struct DelayModelHeader
 {
-    double start_epoch;
-    double end_epoch;
+    uint32_t nantennas; // Number of antennas in the model set
+    uint32_t nbeams; // Number of beams in the model set
+    double start_epoch; // The start of the validity of the model as a unix epoch
+    double end_epoch; // The end of the validity of the model as a unix epoch
 };
 
 /**
@@ -43,37 +42,38 @@ class DelayManager
 {
 public:
     
-    typedef thrust::device_vector<float2> DelayVectorHType;
-    typedef thrust::host_vector<float2> DelayVectorDType;
+    typedef thrust::device_vector<float3> DelayVectorHType;
+    typedef thrust::host_vector<float3> DelayVectorDType;
 
 public:
     /**
-     * @brief      Create a new DelayManager object
-     *
-     * @detail     The passed pipeline configuration contains the names
-     *             of the POSIX shm and sem to connect to for the delay
-     *             models.
+     * @brief Construct a new Delay Manager object
+     * 
+     * @param delay_file A file containing delay models in skyweaver format
+     * @param stream A cuda stream on which to execute host to device copies
      */
     DelayManager(std::string delay_file, cudaStream_t stream);
     ~DelayManager();
     DelayManager(DelayManager const&) = delete;
 
     /**
-     * @brief      Get the delay model for the given epoch
+     * @brief Get the delay model for the given epoch
+     * 
+     * @param epoch A Unix epoch for which to fetch delays.
      *
-     * @detail     Implemented for strictly increasing epochs. 
+     * @details Implemented for strictly increasing epochs. 
      *
-     * @return     A device vector containing the current delays
+     * @return A device vector containing the current delays
      */
     DelayVectorType const& delays(double epoch);
 
 private:
     bool validate_model(double epoch) const;
     void read_next_model();
-    
+    void safe_read(char* buffer, std::size_t nbytes);
+
     cudaStream_t _copy_stream;
-    DelayFileHeader _delay_file_header;
-    DelayModelHeader _delay_model_header;
+    DelayModelHeader _header;
     std::ifstream _input_stream;
     DelayVectorHType _delays_h;
     DelayVectorDType _delays_d;

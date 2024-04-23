@@ -24,18 +24,7 @@ DelayManager::DelayManager(std::string delay_file, cudaStream_t stream)
     }
     BOOST_LOG_TRIVIAL(debug) << "Delay model file successfully opened";
 
-    // Read the file header
-    _input_stream.read(reinterpret_cast<char*>(&_delay_file_header), sizeof(_delay_file_header));
-
-    // Read the scalar antenna weights from file
-    antenna_weights.resize(_delay_file_header.nantennas);
-    _input_stream.read(reinterpret_cast<char*>(
-        antenna_weights.ptr()),
-         _delay_file_header.nantennas * sizeof(float));
-
-    // Resize the arrays for the delay model
-    _delays_h.resize(_delay_file_header.nantennas * _delay_file_header.nbeams);
-    _delays_d.resize(_delay_file_header.nantennas * _delay_file_header.nbeams);
+    //Get first model from file
     read_next_model();
 }
 
@@ -71,33 +60,40 @@ DelayManager::DelayVectorType const& DelayManager::delays(double epoch)
 
 bool DelayManager::validate_model(double epoch) const
 {
-    return ((epoch >= _delay_model_header.start_epoch) 
-            && (epoch <= _delay_model_header.end_epoch));
+    return ((epoch >= _header.start_epoch) 
+            && (epoch <= _header.end_epoch));
 }
 
-void DelayManager::read_next_model()
-{  
-    std::size_t nbytes = 0;
+void DelayManager::safe_read(char* buffer, std::size_t nbytes)
+{   
     if (_input_stream.eof())
     {
         // Reached the end of the delay model file
         // TODO: Decide what the behaviour should be here.
         throw std::runtime_error("Reached end of delay model file")
     }
-    nbytes = _input_stream.read(
-        reinterpret_cast<char*>(&_delay_model_header), 
-        sizeof(_delay_model_header));
-    if (nbytes != sizeof(_delay_model_header))
+    std::size_t nbytes_read = _input_stream.read(buffer, nbytes);
+    if (nbytes_read < nbytes)
     {
-        throw std::runtime_error("Unable to read delay model header from file");
+        throw std::runtime_error("Could not complete read from delay file")
     }
-     nbytes = _input_stream.read(
-        reinterpret_cast<char*>(_delays_h.ptr()), 
-        _delays_h.size() * sizeof(float2));
-    if (nbytes != sizeof(_delay_model_header))
-    {
-        throw std::runtime_error("Unable to read complete delay model from file");
-    }
+}
+
+void DelayManager::read_next_model()
+{  
+    std::size_t nbytes = 0;
+    
+    // Read the model header
+    safe_read(reinterpret_cast<char*>(&_header), sizeof(_header));
+
+    // Resize the arrays for the delay model on the host and GPU
+    const std::size_t nelements = _header.nantennas * _header.nbeams;
+    _delays_h.resize(nelements);
+    _delays_d.resize(nelements);
+
+    // Read the weight, offset, rate tuples from the file
+     safe_read(reinterpret_cast<char*>(_delays_h.ptr()), 
+       nelements * sizeof(DelayVectorHType::data_type));
 }
 
 } //namespace skyweaver
