@@ -6,9 +6,9 @@ ENDIF (PSRDADA_INCLUDE_DIR)
 FIND_PATH(PSRDADA_INCLUDE_DIR dada_def.h
     PATHS ${PSRDADA_INC_DIR}
     ${PSRDADA_INSTALL_DIR}/include
+    /usr/local/include/psrdada
     /usr/local/include
     /usr/include )
-message("Found ${PSRDADA_INCLUDE_DIR} : ${PSRDADA_INSTALL_DIR}")
 
 SET(PSRDADA_NAMES psrdada)
 FOREACH( lib ${PSRDADA_NAMES} )
@@ -19,8 +19,8 @@ FOREACH( lib ${PSRDADA_NAMES} )
     LIST(APPEND PSRDADA_LIBRARIES ${PSRDADA_LIBRARY_${lib}})
 ENDFOREACH(lib)
 
-    # handle the QUIETLY and REQUIRED arguments and set PSRDADA_FOUND to TRUE if.
-    # all listed variables are TRUE
+# handle the QUIETLY and REQUIRED arguments and set PSRDADA_FOUND to TRUE if.
+# all listed variables are TRUE
 include(FindPackageHandleStandardArgs)
 FIND_PACKAGE_HANDLE_STANDARD_ARGS(PSRDADA DEFAULT_MSG PSRDADA_LIBRARIES PSRDADA_INCLUDE_DIR)
 
