@@ -1,6 +1,6 @@
 FROM nvidia/cuda:12.4.1-devel-ubuntu22.04
 
-LABEL maintainer="compact-erc"
+LABEL maintainer="erc-compact"
 
 RUN apt-get update && \
     apt-get install -y \
