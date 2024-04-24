@@ -11,6 +11,7 @@ set(skyweaver_inc
 set(SKYWEAVER_LIBRARIES ${CMAKE_PROJECT_NAME} ${DEPENDENCY_LIBRARIES})
 # -- the main library target
 add_library(${CMAKE_PROJECT_NAME} ${skyweaver_src})
+target_link_libraries(${CMAKE_PROJECT_NAME} ${DEPENDENCY_LIBRARIES})
 
 #install (TARGETS ... DESTINATION bin)
 #install (TARGETS ${CMAKE_PROJECT_NAME}
