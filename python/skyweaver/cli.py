@@ -225,9 +225,17 @@ def cli():
     delays_create_parser.add_argument(
         "--outfile", dest="outfile", default=None, type=str,
         help="Output file to write delays to. Defaults to auto generated filename.")
-    delays_create_parser.add_argument("metafile", metavar="FILE")
-    delays_create_parser.add_argument("bfconfig", metavar="FILE")
-    delays_create_parser.set_defaults(func=delays_create)
+    delays_create_parser.add_argument("metafile", metavar="METAFILE", 
+                                      help="An HDF5 FBFUSE-BVR metadata file")
+    delays_create_parser.add_argument("bfconfig", metavar="BFCONFIG", 
+                                      help="A YAML beamformer configuration file")
+    delays_create_parser.set_defaults(
+        func=lambda args: delays_create(
+            args.metafile,
+            args.bfconfig,
+            args.pointing_idx,
+            args.step,
+            args.outfile))
 
     # parse and execute
     args = parser.parse_args()
