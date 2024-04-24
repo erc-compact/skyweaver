@@ -10,6 +10,11 @@ FIND_PATH(PSRDADACPP_INCLUDE_DIR dada_db.hpp
     /usr/include )
 message(STATUS "Found ${PSRDADACPP_INCLUDE_DIR}")
 
+# Because skyweaver does not have a non-CUDA mode we need to 
+# make sure that the ENABLE_CUDA flag is set when building
+# against PSRDADA_CPP
+add_definitions(-DENABLE_CUDA)
+
 SET(PSRDADACPP_NAMES psrdada_cpp)
 FOREACH( lib ${PSRDADACPP_NAMES} )
     FIND_LIBRARY(PSRDADACPP_LIBRARY_${lib}

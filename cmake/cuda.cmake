@@ -40,7 +40,6 @@ endif()
 
 get_property(dirs DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR} PROPERTY INCLUDE_DIRECTORIES)
 add_definitions(-DUSE_NVTX)
-add_definitions(-DENABLE_CUDA)
 find_library(CUDA_NVTOOLSEXT_LIB
     NAMES nvToolsExt
     HINTS ${CUDA_TOOLKIT_ROOT_DIR}/lib64)
