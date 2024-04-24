@@ -35,10 +35,10 @@ class InvalidDelayEpoch: public std::exception
  *
  */
 struct DelayModelHeader {
-    // Number of antennas in the model set
-    uint32_t nantennas;
     // Number of beams in the model set
     uint32_t nbeams;
+    // Number of antennas in the model set
+    uint32_t nantennas;
     // The start of the validity of the model as a unix epoch
     double start_epoch;
     // The end of the validity of the model as a unix epoch
@@ -52,6 +52,11 @@ struct DelayModelHeader {
 class DelayManager
 {
   public:
+    /**
+     * These vectors are in (nbeam, nantenna) order, i.e. the 
+     * fastest dimension is antenna. This is also how the vectors 
+     * are store on file.
+     */
     typedef thrust::device_vector<float3> DelayVectorHType;
     typedef thrust::host_vector<float3> DelayVectorDType;
 
