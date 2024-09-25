@@ -26,8 +26,7 @@ struct MultiFileWriterConfig{
   std::string prefix;
   std::string extension;
   std::string output_basename;
-  
-
+  PreWriteConfig pre_write;
 
   MultiFileWriterConfig() : header_size(4096), max_file_size(2147483647), stokes_mode("I"), output_dir("default/"), prefix(""), extension(""){};
   MultiFileWriterConfig(std::size_t header_size, std::size_t max_file_size, std::string stokes_mode, std::string output_dir, std::string prefix, std::string extension) : header_size(header_size), max_file_size(max_file_size), stokes_mode(stokes_mode), output_dir(output_dir), prefix(prefix), extension(extension), output_basename(""){ };
@@ -59,13 +58,13 @@ template <typename VectorType>
 class MultiFileWriter
 {
 public:
-
   using CreateStreamCallBackType = std::function<std::unique_ptr<FileOutputStream>(MultiFileWriterConfig const&,
                                   ObservationHeader const&,
                                   VectorType const&,
                                   std::size_t)>;
 
   public:
+     using PreWriteCallback = std::function<void(std::size_t, MultiFileWriterConfig const&)>;
     /**
      * @brief Construct a new Multi File Writer object
      *
@@ -75,7 +74,9 @@ public:
      */
     // MultiFileWriter(PipelineConfig const& config, std::string tag = "");
     MultiFileWriter(PipelineConfig const& config, std::string tag, CreateStreamCallBackType create_stream_callback);
+    MultiFileWriter(PipelineConfig const& config, std::string tag, CreateStreamCallBackType create_stream_callback, PreWriteCallback pre_write_callback);
     MultiFileWriter(MultiFileWriterConfig config, std::string tag, CreateStreamCallBackType create_stream_callback);
+    MultiFileWriter(MultiFileWriterConfig config, std::string tag, CreateStreamCallBackType create_stream_callback, PreWriteCallback pre_write_callback);
     MultiFileWriter(MultiFileWriter const&) = delete;
 
     /**
@@ -124,6 +125,7 @@ public:
     std::string get_extension(VectorType const& stream_data);
     CreateStreamCallBackType _create_stream_callback;
     MultiFileWriterConfig _config;
+    PreWriteCallback _pre_write_callback;
     std::string _tag;
     ObservationHeader _header;
     std::map<std::size_t, std::unique_ptr<FileOutputStream>> _file_streams;

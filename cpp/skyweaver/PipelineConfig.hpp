@@ -9,6 +9,19 @@
 
 namespace skyweaver
 {
+  struct WaitConfig
+  {
+    int iterations;
+    int sleep_time;
+    std::size_t min_free_space;
+  };
+
+  struct PreWriteConfig
+  {
+    bool is_enabled;
+    WaitConfig wait;
+  };
+
 
 /**
  * @brief      Class for wrapping the skyweaver pipeline configuration.
@@ -154,6 +167,11 @@ class PipelineConfig
     DedispersionPlan const& ddplan() const;
 
     /**
+     * @brief      configures wait for filesystem space
+     */
+    void configure_wait(std::string argument);
+
+    /**
      * @brief      Enable/disable incoherent dedispersion based fscrunch after
      * beamforming
      */
@@ -207,6 +225,11 @@ class PipelineConfig
     std::size_t nsamples_per_block() const
     {
         return SKYWEAVER_CB_NSAMPLES_PER_BLOCK;
+    }
+
+    PreWriteConfig pre_write_config() const
+    {
+        return _pre_write_config;
     }
 
     /**
@@ -323,6 +346,7 @@ class PipelineConfig
     }
 
   private:
+    std::size_t convertMemorySize(const std::string& str) const;
     void calculate_channel_frequencies() const;
     void update_power_offsets_and_scalings();
 
@@ -350,6 +374,7 @@ class PipelineConfig
     float _output_level;
     DedispersionPlan _ddplan;
     mutable std::vector<double> _channel_frequencies;
+    PreWriteConfig _pre_write_config;
 };
 
 } // namespace skyweaver

@@ -52,6 +52,24 @@ MultiFileWriter<VectorType>::MultiFileWriter(PipelineConfig const& config,
     writer_config.base_output_dir = config.output_dir();
 
     _config = writer_config;
+    _pre_write_callback = nullptr;
+}
+
+ template <typename VectorType>
+MultiFileWriter<VectorType>::MultiFileWriter(PipelineConfig const& config,
+                                             std::string tag,
+                                             CreateStreamCallBackType create_stream_callback,
+                                             PreWriteCallback pre_write_callback)
+    : _tag(tag), _create_stream_callback(create_stream_callback), _pre_write_callback(pre_write_callback)
+{
+    MultiFileWriterConfig writer_config;
+    writer_config.header_size = config.dada_header_size();
+    writer_config.max_file_size = config.max_output_filesize();
+    writer_config.stokes_mode = config.stokes_mode();
+    writer_config.output_dir = config.output_dir();
+    writer_config.pre_write = config.pre_write_config();
+    _config = writer_config;
+    _config.pre_write = writer_config.pre_write;
 }
 
 template <typename VectorType>
@@ -60,7 +78,18 @@ MultiFileWriter<VectorType>::MultiFileWriter(MultiFileWriterConfig config,
                                              CreateStreamCallBackType create_stream_callback)
     : _config(config), _tag(tag), _create_stream_callback(create_stream_callback)
 {
+   _pre_write_callback = nullptr;
 }
+
+template <typename VectorType>
+MultiFileWriter<VectorType>::MultiFileWriter(MultiFileWriterConfig config,
+                                             std::string tag,
+                                             CreateStreamCallBackType create_stream_callback,
+                                             PreWriteCallback pre_write_callback)
+    : _config(config), _tag(tag), _create_stream_callback(create_stream_callback), _pre_write_callback(pre_write_callback)
+{
+}
+
 
 
 
@@ -160,6 +189,11 @@ template <typename VectorType>
 bool MultiFileWriter<VectorType>::operator()(VectorType const& stream_data,
                                              std::size_t stream_idx)
 {
+    std::size_t const data_size = stream_data.size() * sizeof(typename VectorType::value_type);
+    if (_pre_write_callback != nullptr && _config.pre_write.is_enabled)
+    {
+      _pre_write_callback(data_size, _config);
+    }
     if(!has_stream(stream_idx)) {
         create_stream(stream_data, stream_idx);
     }
@@ -174,8 +208,7 @@ bool MultiFileWriter<VectorType>::operator()(VectorType const& stream_data,
         _file_streams.at(stream_idx)
             ->write(reinterpret_cast<char const*>(
                         thrust::raw_pointer_cast(stream_data.data())),
-                    stream_data.size() *
-                        sizeof(typename VectorType::value_type));
+                    data_size);
     }
     return false;
 }
