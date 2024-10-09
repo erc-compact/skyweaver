@@ -93,7 +93,7 @@ void IncoherentDedisperser::dedisperse<InputVectorType, OutputVectorType>(
         for(int t_idx = _max_sample_delay; t_idx < nsamples; t_idx += _tscrunch) {
             std::size_t t_output_offset = std::size_t(t_idx - _max_sample_delay) / _tscrunch * nbeams * ndms;
             for(int dm_idx = 0; dm_idx < ndms; ++dm_idx) {
-                int offset = nchans * dm_idx;
+            int offset = nchans * dm_idx;
                 std::fill(powers.begin(),
                           powers.end(),
                           value_traits<

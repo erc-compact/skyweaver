@@ -48,6 +48,8 @@ class FileOutputStream
         std::string _full_path;
         std::size_t _bytes_requested;
         std::size_t _bytes_written;
+        std::string _temporary_suffix;
+        std::string _temporary_path;
         std::ofstream _stream;
     };
 

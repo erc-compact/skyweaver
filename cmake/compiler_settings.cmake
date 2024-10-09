@@ -5,6 +5,8 @@ if (NOT CMAKE_BUILD_TYPE)
     set(CMAKE_BUILD_TYPE "RELEASE")
 endif ()
 
+#set(CMAKE_VERBOSE_MAKEFILE 1)
+set (CMAKE_CXX_STANDARD 20)
 # Set compiler flags
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fPIC -fopenmp")
 

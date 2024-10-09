@@ -18,52 +18,6 @@ namespace skyweaver
 namespace
 {
 
-/**
- * The expectation is that each file contains data in
- * TBTF order. Need to explicitly update:
- * INNER_T --> the number of timesamples per block that was processed
- * NBEAMS --> the total number of beams in the file
- * DM --> the dispersion measure of this data
- * Freq --> the centre frequency of this subband (???)
- * BW --> the bandwidth of the subband (???)
- * TSAMP --> the sampling interval of the data
- * NPOL --> normally 1 but could be 4 for full stokes
- * CHAN0_IDX --> this comes from the obs header and uniquely identifies the
- * bridge
- */
-std::string default_dada_header = R"(
-HEADER       DADA
-HDR_VERSION  1.0
-HDR_SIZE     4096
-DADA_VERSION 1.0
-
-FILE_SIZE    100000000000
-FILE_NUMBER  0
-
-UTC_START    1708082229.000020336 
-MJD_START    60356.47024305579093
-
-SOURCE       J1644-4559
-RA           16:44:49.27
-DEC          -45:59:09.7
-TELESCOPE    MeerKAT
-INSTRUMENT   CBF-Feng
-RECEIVER     L-band
-FREQ         1284000000.000000
-BW           856000000.000000
-TSAMP        4.7850467290
-STOKES       I
-
-NBIT         8
-NDIM         1
-NPOL         1
-NCHAN        64
-NBEAM       800
-ORDER        TFB
-
-CHAN0_IDX 2688
-)";
-
 std::string get_formatted_time(long double unix_timestamp)
 {
     char formatted_time[80];
@@ -75,10 +29,36 @@ std::string get_formatted_time(long double unix_timestamp)
 
 } // namespace
 
+// template <typename VectorType>
+// MultiFileWriter<VectorType>::MultiFileWriter(PipelineConfig const& config,
+//                                              std::string tag)
+//     : _config(config), _tag(tag)
+// {
+// }
+
 template <typename VectorType>
-MultiFileWriter<VectorType>::MultiFileWriter(PipelineConfig const& config,
-                                             std::string tag)
-    : _config(config), _tag(tag)
+MultiFileWriter<VectorType>::MultiFileWriter(
+    PipelineConfig const& config,
+    std::string tag,
+    CreateStreamCallBackType create_stream_callback)
+    : _tag(tag), _create_stream_callback(create_stream_callback)
+{
+    MultiFileWriterConfig writer_config;
+    writer_config.header_size     = config.dada_header_size();
+    writer_config.max_file_size   = config.max_output_filesize();
+    writer_config.stokes_mode     = config.stokes_mode();
+    writer_config.base_output_dir = config.output_dir();
+
+    _config = writer_config;
+}
+
+template <typename VectorType>
+MultiFileWriter<VectorType>::MultiFileWriter(
+    MultiFileWriterConfig config,
+    std::string tag,
+    CreateStreamCallBackType create_stream_callback)
+    : _config(config), _tag(tag),
+      _create_stream_callback(create_stream_callback)
 {
 }
 
@@ -103,89 +83,17 @@ FileOutputStream&
 MultiFileWriter<VectorType>::create_stream(VectorType const& stream_data,
                                            std::size_t stream_idx)
 {
-    BOOST_LOG_TRIVIAL(debug) << "Creating stream based on stream prototype: "
-                             << stream_data.describe();
-    // Here we round the file size to a multiple of the stream prototype
-    std::size_t filesize =
-        std::max(1ul,
-                 _config.max_output_filesize() / stream_data.size() /
-                     sizeof(typename VectorType::value_type)) *
-        stream_data.size();
-    BOOST_LOG_TRIVIAL(debug)
-        << "Maximum allowed file size = " << filesize << " bytes (+header)";
+    _config.output_dir = get_output_dir(stream_data, stream_idx);
 
-    _file_streams[stream_idx] = std::make_unique<FileOutputStream>(
-        get_output_dir(stream_data, stream_idx),
-        get_basefilename(stream_data, stream_idx),
-        get_extension(stream_data),
-        filesize,
-        [&, this, stream_data, stream_idx, filesize](
-            std::size_t& header_size,
-            std::size_t bytes_written,
-            std::size_t file_idx) -> std::shared_ptr<char const> {
-            header_size       = _config.dada_header_size();
-            char* temp_header = new char[header_size];
-            std::fill(temp_header, temp_header + header_size, 0);
-            std::memcpy(temp_header,
-                        default_dada_header.c_str(),
-                        default_dada_header.size());
-            psrdada_cpp::RawBytes bytes(temp_header,
-                                        header_size,
-                                        header_size,
-                                        false);
-            Header header_writer(bytes);
-            header_writer.set<std::size_t>("NBEAM", stream_data.nbeams());
-            header_writer.set<std::size_t>("NCHAN", stream_data.nchannels());
-            header_writer.set<std::size_t>("OBS_NCHAN", _header.obs_nchans);
-            header_writer.set<long double>("OBS_FREQUENCY",
-                                           _header.obs_frequency);
-            header_writer.set<long double>("OBS_BW", _header.obs_bandwidth);
-            header_writer.set<std::size_t>("NSAMP", stream_data.nsamples());
-            if(stream_data.ndms()) {
-                header_writer.set<std::size_t>("NDMS", stream_data.ndms());
-                header_writer.set("DMS", stream_data.dms(), 7);
-            }
-            header_writer.set<long double>(
-                "COHERENT_DM",
-                static_cast<long double>(stream_data.reference_dm()));
-            try{
-                header_writer.set<long double>("FREQ", std::accumulate(
-                                                stream_data.frequencies().begin(),
-                                                stream_data.frequencies().end(),
-                                                0.0)/stream_data.frequencies().size());
-            } catch(std::runtime_error& ){
-                BOOST_LOG_TRIVIAL(warning) << "Warning: Frequencies array was stale, using the centre frequency from the header";
-                header_writer.set<long double>("FREQ", _header.frequency);
-            }
-    
-            header_writer.set<long double>("BW", _header.bandwidth);
-            header_writer.set<long double>("TSAMP", stream_data.tsamp() * 1e6);
-            if(_config.stokes_mode() == "IQUV") {
-                header_writer.set<std::size_t>("NPOL", 4);
-            } else {
-                header_writer.set<std::size_t>("NPOL", 1);
-            }
-            header_writer.set<std::string>("STOKES_MODE",
-                                           _config.stokes_mode());
-            header_writer.set<std::string>("ORDER",
-                                           stream_data.dims_as_string());
-            header_writer.set<std::size_t>("CHAN0_IDX", _header.chan0_idx);
-            header_writer.set<std::size_t>("FILE_SIZE", filesize);
-            header_writer.set<std::size_t>("FILE_NUMBER", file_idx);
-            header_writer.set<std::size_t>("OBS_OFFSET", bytes_written);
-            header_writer.set<std::size_t>("OBS_OVERLAP", 0);
-            BOOST_LOG_TRIVIAL(debug) << "utc_offset is " << std::setprecision(15) << stream_data.utc_offset();
-            BOOST_LOG_TRIVIAL(debug) << "UTC_START is " << std::setprecision(15) << _header.utc_start;
-            BOOST_LOG_TRIVIAL(debug) << "Setting UTC_START to " << std::setprecision(15)
-                                    << _header.utc_start + stream_data.utc_offset();
-            header_writer.set<long double>("UTC_START",
-                                           _header.utc_start +
-                                               stream_data.utc_offset());
-            std::shared_ptr<char const> header_ptr(
-                temp_header,
-                std::default_delete<char[]>());
-            return header_ptr;
-        });
+    if(_config.extension.empty()) {
+        _config.extension = get_extension(stream_data);
+    }
+
+    _config.output_basename = get_basefilename(stream_data, stream_idx);
+
+    _file_streams[stream_idx] =
+        _create_stream_callback(_config, _header, stream_data, stream_idx);
+
     return *_file_streams[stream_idx];
 }
 
@@ -197,11 +105,9 @@ MultiFileWriter<VectorType>::get_output_dir(VectorType const& stream_data,
     // Output directory format
     // <utcstart>/<freq:%f.02>/<stream_id>
     std::stringstream output_dir;
-    output_dir << _config.output_dir() << "/"
-               << get_formatted_time(_header.utc_start) << "/" 
-               << stream_idx << "/" 
-               << std::fixed << std::setfill('0') << std::setw(9)
-               << static_cast<int>(_header.frequency);
+    output_dir << _config.base_output_dir << "/"
+               << get_formatted_time(_header.utc_start) << "/" << stream_idx;
+
     return output_dir.str();
 }
 
@@ -213,14 +119,13 @@ MultiFileWriter<VectorType>::get_basefilename(VectorType const& stream_data,
     // Output file format
     // <prefix>_<utcstart>_<dm:%f.03>_<byte_offset>.<extension>
     std::stringstream base_filename;
-    if(!_config.output_file_prefix().empty()) {
-        base_filename << _config.output_file_prefix() << "_";
+    if(!_config.prefix.empty()) {
+        base_filename << _config.prefix << "_";
     }
     base_filename << get_formatted_time(_header.utc_start) << "_" << stream_idx
                   << "_" << std::fixed << std::setprecision(3)
                   << std::setfill('0') << std::setw(9)
-                  << stream_data.reference_dm() << "_" << std::setprecision(0)
-                  << std::setfill('0') << std::setw(9) << _header.frequency;
+                  << stream_data.reference_dm();
     if(!_tag.empty()) {
         base_filename << "_" << _tag;
     }
@@ -233,6 +138,11 @@ MultiFileWriter<VectorType>::get_extension(VectorType const& stream_data)
 {
     std::string dims = stream_data.dims_as_string();
     for(auto& c: dims) { c = std::tolower(static_cast<unsigned char>(c)); }
+    if(dims == "t") {
+        return ".dat";
+    } else if(dims == "tf") {
+        return ".fil";
+    }
     return "." + dims;
 }
 
@@ -258,6 +168,13 @@ bool MultiFileWriter<VectorType>::operator()(VectorType const& stream_data,
                         sizeof(typename VectorType::value_type));
     }
     return false;
+}
+
+template <typename VectorType>
+bool MultiFileWriter<VectorType>::write(VectorType const& stream_data,
+                                        std::size_t stream_idx)
+{
+    return this->operator()(stream_data, stream_idx);
 }
 
 } // namespace skyweaver

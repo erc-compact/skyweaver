@@ -70,7 +70,7 @@ class NullHandler
 {
   public:
     template <typename... Args>
-    void init(Args... args) {};
+    void init(Args... args){};
 
     template <typename... Args>
     bool operator()(Args... args)
@@ -80,7 +80,8 @@ class NullHandler
 };
 
 template <typename BfTraits>
-BeamformerPipelineTester<BfTraits>::BeamformerPipelineTester(): ::testing::Test()
+BeamformerPipelineTester<BfTraits>::BeamformerPipelineTester()
+    : ::testing::Test()
 {
 }
 
@@ -127,7 +128,10 @@ TYPED_TEST(BeamformerPipelineTester, instantiate)
     BeamformerPipeline<decltype(cb_handler),
                        decltype(ib_handler),
                        decltype(stats_handler),
-                       BfTraits>(this->_config, cb_handler, ib_handler, stats_handler);
+                       BfTraits>(this->_config,
+                                 cb_handler,
+                                 ib_handler,
+                                 stats_handler);
 }
 
 TYPED_TEST(BeamformerPipelineTester, full_pipeline_test)
@@ -146,9 +150,12 @@ TYPED_TEST(BeamformerPipelineTester, full_pipeline_test)
     read_dada_header(raw_header, header);
     validate_header(header, this->_config);
     update_config(this->_config, header);
-
-    MultiFileWriter<TDBPowersH<typename BfTraits::QuantisedPowerType>>
-        cb_handler(this->_config, "cb");
+    using WriterType =
+        MultiFileWriter<TDBPowersH<typename BfTraits::QuantisedPowerType>>;
+    typename WriterType::CreateStreamCallBackType create_stream_callback =
+        detail::create_dada_file_stream<
+            TDBPowersH<typename BfTraits::QuantisedPowerType>>;
+    WriterType cb_handler(this->_config, "cb", create_stream_callback);
     NullHandler ib_handler;
     NullHandler stats_handler;
     using IDPipelineType =
@@ -156,9 +163,9 @@ TYPED_TEST(BeamformerPipelineTester, full_pipeline_test)
                                        typename BfTraits::QuantisedPowerType,
                                        decltype(cb_handler)>;
     using BPipelineType    = BeamformerPipeline<IDPipelineType,
-                                                decltype(ib_handler),
-                                                decltype(stats_handler),
-                                                BfTraits>;
+                                             decltype(ib_handler),
+                                             decltype(stats_handler),
+                                             BfTraits>;
     using InputVectorTypeH = typename BPipelineType::VoltageVectorTypeH;
 
     IDPipelineType dedispersion_pipeline(this->_config, cb_handler);
@@ -168,11 +175,12 @@ TYPED_TEST(BeamformerPipelineTester, full_pipeline_test)
                            stats_handler);
 
     InputVectorTypeH input({
-        this->_config.gulp_length_samps() / this->_config.nsamples_per_heap(), // T
-        header.nantennas,                                        // A
-        this->_config.nchans(),                                         // F
-        this->_config.nsamples_per_heap(),                              // T
-        this->_config.npol()                                            // P
+        this->_config.gulp_length_samps() /
+            this->_config.nsamples_per_heap(), // T
+        header.nantennas,                      // A
+        this->_config.nchans(),                // F
+        this->_config.nsamples_per_heap(),     // T
+        this->_config.npol()                   // P
     });
     input.frequencies(this->_config.channel_frequencies());
     input.dms({0.0f});

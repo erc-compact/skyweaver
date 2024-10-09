@@ -128,6 +128,23 @@ struct DescribedVector {
     }
 
     /**
+     * @brief Construct a new Described Vector object of specific size
+     *
+     * @param sizes The sizes of the dimensions (must match the number of
+     * dimensions)
+     */
+    DescribedVector(std::initializer_list<std::size_t> sizes, value_type default_value)
+        : _dms_stale(true), _frequencies_stale(true), _sizes(sizes),
+          _dims{dims...}, _tsamp(0.0)
+    {
+        if(_sizes.size() != sizeof...(dims)) {
+            throw std::invalid_argument(
+                "Number of sizes must match number of dimensions");
+        }
+        _vector.resize(calculate_nelements(), default_value);
+    }
+
+    /**
      * @brief Destroy the Described Vector object
      *
      */
@@ -212,6 +229,12 @@ struct DescribedVector {
      * underlying data is linear (flat indexing).
      */
     auto const& operator[](std::size_t idx) const { return _vector[idx]; }
+
+
+    // also the at() method
+    auto& at(std::size_t idx) { return _vector[idx]; }
+    auto const& at(std::size_t idx) const { return _vector[idx]; }
+    
 
     /**
      * @brief Resize the dimensions of the vector
@@ -648,7 +671,7 @@ using BTFPowersH = DescribedVector<thrust::host_vector<T, PinnedAllocator<T>>,
 template <typename T>
 using BTFPowersD =
     DescribedVector<thrust::device_vector<T>, BeamDim, TimeDim, FreqDim>;
-// Incoherent dedisperser outputs
+// Incoherent dedisperser outputs, also used for skycleaver
 template <typename T>
 using TDBPowersH = DescribedVector<thrust::host_vector<T, PinnedAllocator<T>>,
                                    TimeDim,
@@ -666,6 +689,13 @@ using FPAStatsH = DescribedVector<thrust::host_vector<T, PinnedAllocator<T>>,
 template <typename T>
 using FPAStatsD =
     DescribedVector<thrust::device_vector<T>, FreqDim, PolnDim, AntennaDim>;
+
+//skycleaver output vectors
+
+template <typename T>
+using TFPowersH = DescribedVector<thrust::host_vector<T, PinnedAllocator<T>>,
+                                  TimeDim,
+                                  FreqDim>;
 
 } // namespace skyweaver
 

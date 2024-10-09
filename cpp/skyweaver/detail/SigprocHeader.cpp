@@ -1,4 +1,4 @@
-#include "skyweaver/SigProcHeader.hpp"
+#include "skyweaver/SigprocHeader.hpp"
 
 #include <string>
 

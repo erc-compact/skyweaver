@@ -18,6 +18,9 @@ set(skyweaver_src
    src/Timer.cpp
    src/Transposer.cu
    src/WeightsManager.cu
+   src/SkyCleaver.cu
+   src/SigprocHeader.cpp
+
    )
 
 set(skyweaver_inc
@@ -38,6 +41,8 @@ set(skyweaver_inc
     Timer.hpp
     Transposer.cuh
     WeightsManager.cuh
+    MultiFileWriter.cuh
+    SigprocHeader.hpp
    )
 
 set(SKYWEAVER_LIBRARIES ${CMAKE_PROJECT_NAME} ${DEPENDENCY_LIBRARIES})
@@ -105,6 +110,13 @@ target_link_libraries(skyweavercpp
     ${CUDA_NVTOOLSEXT_LIB} 
     OpenMP::OpenMP_CXX)
 install(TARGETS skyweavercpp DESTINATION bin)
+
+cuda_add_executable(skycleaver src/skycleaver_cli.cu)
+target_link_libraries(skycleaver 
+    ${SKYWEAVER_LIBRARIES} 
+    ${DEPENDENCY_LIBRARIES} 
+    OpenMP::OpenMP_CXX)
+install(TARGETS skycleaver DESTINATION bin)
 
 #install (TARGETS ... DESTINATION bin)
 #install (TARGETS ${CMAKE_PROJECT_NAME}

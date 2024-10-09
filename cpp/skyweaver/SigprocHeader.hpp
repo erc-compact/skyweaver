@@ -3,6 +3,7 @@
 #define SKYWEAVER_SIGPROCHEADER_HPP
 
 #include "psrdada_cpp/raw_bytes.hpp"
+#include "skyweaver/ObservationHeader.hpp"
 
 #include <fstream>
 #include <iostream>
@@ -14,7 +15,22 @@
 namespace skyweaver
 {
 
-struct FilHead {
+
+class SigprocHeader
+{
+  public:
+    SigprocHeader();
+
+    SigprocHeader(ObservationHeader const& obs_header);
+
+    SigprocHeader(SigprocHeader const&) = delete; 
+
+    ~SigprocHeader();
+
+    void write_header(std::ostream& stream);
+    void add_time_offset(double offset_mjd);
+
+  private:
     std::string rawfile  = "unset";
     std::string source   = "unset";
     double az            = 0.0; // azimuth angle in deg
@@ -35,20 +51,7 @@ struct FilHead {
     uint32_t nchans      = 0;   // number of frequency channels
     uint32_t nifs        = 0;   // number of ifs (pols)
     uint32_t telescopeid = 0;   // telescope ID
-};
 
-class SigprocHeader
-{
-  public:
-    SigprocHeader();
-
-    SigprocHeader(SigprocHeader const&) = delete;
-
-    ~SigprocHeader();
-
-    std::ostream& write_header(std::ostream& stream, FilHead const& header);
-
-  private:
     /*
      * @brief write string to the header
      */
@@ -57,6 +60,7 @@ class SigprocHeader
     void header_write(std::ostream& stream,
                       std::string const& str,
                       std::string const& name);
+
 
     /*
      * @brief write a value to the stream

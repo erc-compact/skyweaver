@@ -254,14 +254,33 @@ void setup_pipeline(skyweaver::PipelineConfig& config)
     update_config(config, header);
     BOOST_LOG_TRIVIAL(debug) << "Creating pipeline handlers";
     using OutputType = typename BfTraits::QuantisedPowerType;
-    skyweaver::MultiFileWriter<skyweaver::BTFPowersH<OutputType>> ib_handler(
-        config,
-        "ib");
-    skyweaver::MultiFileWriter<skyweaver::FPAStatsD<skyweaver::Statistics>>
-        stats_handler(config, "stats");
+
+    using IBWriterType =
+        skyweaver::MultiFileWriter<skyweaver::BTFPowersH<OutputType>>;
+    typename IBWriterType::CreateStreamCallBackType create_stream_callback_ib =
+        skyweaver::detail::create_dada_file_stream<
+            skyweaver::BTFPowersH<OutputType>>;
+    IBWriterType ib_handler(config, "ib", create_stream_callback_ib);
+
+    using StatsWriterType =
+        skyweaver::MultiFileWriter<skyweaver::FPAStatsD<skyweaver::Statistics>>;
+    typename StatsWriterType::CreateStreamCallBackType
+        create_stream_callback_stats =
+            skyweaver::detail::create_dada_file_stream<
+                skyweaver::FPAStatsD<skyweaver::Statistics>>;
+    StatsWriterType stats_handler(config,
+                                  "stats",
+                                  create_stream_callback_stats);
+
     if constexpr(enable_incoherent_dedispersion) {
+        using CBWriterType =
+            skyweaver::MultiFileWriter<skyweaver::TDBPowersH<OutputType>>;
+        typename CBWriterType::CreateStreamCallBackType
+            create_stream_callback_cb =
+                skyweaver::detail::create_dada_file_stream<
+                    skyweaver::TDBPowersH<OutputType>>;
         skyweaver::MultiFileWriter<skyweaver::TDBPowersH<OutputType>>
-            cb_file_writer(config, "cb");
+            cb_file_writer(config, "cb", create_stream_callback_cb);
         skyweaver::IncoherentDedispersionPipeline<OutputType,
                                                   OutputType,
                                                   decltype(cb_file_writer)>
@@ -276,8 +295,13 @@ void setup_pipeline(skyweaver::PipelineConfig& config)
                      stats_handler);
         run_pipeline(pipeline, config, file_reader, header);
     } else {
-        skyweaver::MultiFileWriter<skyweaver::TFBPowersD<OutputType>>
-            cb_file_writer(config, "cb");
+        using CBWriterType =
+            skyweaver::MultiFileWriter<skyweaver::TFBPowersD<OutputType>>;
+        typename CBWriterType::CreateStreamCallBackType
+            create_stream_callback_cb =
+                skyweaver::detail::create_dada_file_stream<
+                    skyweaver::TFBPowersD<OutputType>>;
+        CBWriterType cb_file_writer(config, "cb", create_stream_callback_cb);
         skyweaver::BeamformerPipeline<decltype(cb_file_writer),
                                       decltype(ib_handler),
                                       decltype(stats_handler),
@@ -412,19 +436,20 @@ int main(int argc, char** argv)
                  ->default_value(config.gulp_length_samps())
                  ->notifier([&config](std::size_t const& gulp_size) {
                      // Round off to next multiple of 256
-                     if(gulp_size % config.nsamples_per_heap() != 0 || //256
-                        gulp_size % config.nsamples_per_block() != 0) { // 32* tscrunch
-                        
-                        std::size_t larger_value = std::max(
-                            config.nsamples_per_heap(),
-                            config.nsamples_per_block());
+                     if(gulp_size % config.nsamples_per_heap() != 0 || // 256
+                        gulp_size % config.nsamples_per_block() !=
+                            0) { // 32* tscrunch
+
+                         std::size_t larger_value =
+                             std::max(config.nsamples_per_heap(),
+                                      config.nsamples_per_block());
 
                          BOOST_LOG_TRIVIAL(warning)
-                             << "Rounding up gulp-size to next multiple of NSAMPLES PER HEAP and NSAMPLES PER BLOCK";
+                             << "Rounding up gulp-size to next multiple of "
+                                "NSAMPLES PER HEAP and NSAMPLES PER BLOCK";
 
-                         config.gulp_length_samps(
-                             (gulp_size / larger_value) *
-                             larger_value);
+                         config.gulp_length_samps((gulp_size / larger_value) *
+                                                  larger_value);
                      } else {
                          config.gulp_length_samps(gulp_size);
                      }
@@ -532,13 +557,15 @@ int main(int argc, char** argv)
                                    skyweaver::StokesParameter::V>,
                                true>(config);
             } else if(config.stokes_mode() == "QU") {
-                setup_pipeline<skyweaver::StokesTraits<
-                                   skyweaver::StokesParameter::Q, skyweaver::StokesParameter::U>,
-                               true>(config);
+                setup_pipeline<
+                    skyweaver::StokesTraits<skyweaver::StokesParameter::Q,
+                                            skyweaver::StokesParameter::U>,
+                    true>(config);
             } else if(config.stokes_mode() == "IV") {
-                setup_pipeline<skyweaver::StokesTraits<
-                                   skyweaver::StokesParameter::I, skyweaver::StokesParameter::V>,
-                               true>(config);             
+                setup_pipeline<
+                    skyweaver::StokesTraits<skyweaver::StokesParameter::I,
+                                            skyweaver::StokesParameter::V>,
+                    true>(config);
             } else if(config.stokes_mode() == "IQUV") {
                 setup_pipeline<skyweaver::FullStokesBeamformerTraits, true>(
                     config);
@@ -566,13 +593,15 @@ int main(int argc, char** argv)
                                    skyweaver::StokesParameter::V>,
                                false>(config);
             } else if(config.stokes_mode() == "QU") {
-                setup_pipeline<skyweaver::StokesTraits<
-                                   skyweaver::StokesParameter::Q, skyweaver::StokesParameter::U>,
-                               false>(config);
+                setup_pipeline<
+                    skyweaver::StokesTraits<skyweaver::StokesParameter::Q,
+                                            skyweaver::StokesParameter::U>,
+                    false>(config);
             } else if(config.stokes_mode() == "IV") {
-                setup_pipeline<skyweaver::StokesTraits<
-                                   skyweaver::StokesParameter::I, skyweaver::StokesParameter::V>,
-                               false>(config); 
+                setup_pipeline<
+                    skyweaver::StokesTraits<skyweaver::StokesParameter::I,
+                                            skyweaver::StokesParameter::V>,
+                    false>(config);
             } else if(config.stokes_mode() == "IQUV") {
                 setup_pipeline<skyweaver::FullStokesBeamformerTraits, false>(
                     config);
