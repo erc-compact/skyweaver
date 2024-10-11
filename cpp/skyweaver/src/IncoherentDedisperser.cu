@@ -66,7 +66,7 @@ int IncoherentDedisperser::max_sample_delay() const
 template <typename InputVectorType, typename OutputVectorType>
 void IncoherentDedisperser::dedisperse<InputVectorType, OutputVectorType>(
     InputVectorType const& tfb_powers, // this is not a described vector
-    OutputVectorType& tdb_powers)
+    std::vector<OutputVectorType>& tdb_powers)
 {
     typedef typename value_traits<
         typename OutputVectorType::value_type>::promoted_type AccumulatorType;
@@ -74,6 +74,8 @@ void IncoherentDedisperser::dedisperse<InputVectorType, OutputVectorType>(
 
     const std::size_t nchans   = _config.nchans();
     const std::size_t nbeams   = _config.nbeams();
+    const std::size_t nbeams_per_file   = _config.nbeams_per_file();
+    const std::size_t n_tdb_files   = nbeams / nbeams_per_file;
     const std::size_t ndms     = _dms.size();
     const std::size_t nsamples = tfb_powers.size() / (nbeams * nchans);
     const std::size_t bf       = nbeams * nchans;
@@ -85,34 +87,42 @@ void IncoherentDedisperser::dedisperse<InputVectorType, OutputVectorType>(
         throw std::runtime_error(
             "(nsamples - max_sample_delay) must be a multiple of tscrunch;");
     }
-    tdb_powers.resize({(nsamples - _max_sample_delay) / _tscrunch, ndms, nbeams});
+    for (int tdb_file_idx = 0; tdb_file_idx < n_tdb_files; tdb_file_idx++)
+    {
+        tdb_powers[tdb_file_idx].resize({(nsamples - _max_sample_delay) / _tscrunch, ndms, nbeams_per_file});
+    }
+
 #pragma omp parallel
     {
         AccumulatorVectorType powers(nbeams); // Once per thread
 #pragma omp for
         for(int t_idx = _max_sample_delay; t_idx < nsamples; t_idx += _tscrunch) {
-            std::size_t t_output_offset = std::size_t(t_idx - _max_sample_delay) / _tscrunch * nbeams * ndms;
+            std::size_t t_output_offset = std::size_t(t_idx - _max_sample_delay) / _tscrunch * nbeams_per_file * ndms;
             for(int dm_idx = 0; dm_idx < ndms; ++dm_idx) {
             int offset = nchans * dm_idx;
                 std::fill(powers.begin(),
                           powers.end(),
                           value_traits<
-                              typename decltype(powers)::value_type>::zero());
+                          typename decltype(powers)::value_type>::zero());
                 for(int tsub_idx = 0; tsub_idx < _tscrunch; ++tsub_idx) {
                     for(int f_idx = 0; f_idx < nchans; ++f_idx) {
                         std::size_t idx =
                             std::size_t((t_idx + tsub_idx) - _delays[offset + f_idx]) *
-                                bf +
+                            bf +
                             f_idx * nbeams;
                         for(int b_idx = 0; b_idx < nbeams; ++b_idx) {
                             powers[b_idx] += tfb_powers[idx + b_idx];
                         }
                     }
-                    std::size_t output_offset = t_output_offset + dm_idx * nbeams;
+                }
+                    
+                for (int tdb_file_idx = 0; tdb_file_idx < n_tdb_files; tdb_file_idx++)
+                {
+                    std::size_t output_offset = t_output_offset + dm_idx * nbeams_per_file;
                     std::transform(
-                        powers.begin(),
-                        powers.end(),
-                        tdb_powers.begin() + output_offset,
+                        &powers[tdb_file_idx * nbeams_per_file],
+                        &powers[(tdb_file_idx + 1) * nbeams_per_file],
+                        tdb_powers[tdb_file_idx].begin() + output_offset,
                         [this](AccumulatorType const& value) {
                             return clamp<typename OutputVectorType::value_type>(
                                 value / _scale_factor);
@@ -128,21 +138,21 @@ template void IncoherentDedisperser::dedisperse<
     thrust::host_vector<int8_t, PinnedAllocator<int8_t>>,
     TDBPowersH<int8_t>>(
     thrust::host_vector<int8_t, PinnedAllocator<int8_t>> const& tfb_powers,
-    TDBPowersH<int8_t>& tdb_powers);
+    std::vector<TDBPowersH<int8_t>>& tdb_powers);
 template void IncoherentDedisperser::dedisperse<
     thrust::host_vector<char2, PinnedAllocator<char2>>,
     TDBPowersH<char2>>(
     thrust::host_vector<char2, PinnedAllocator<char2>> const& tfb_powers,
-    TDBPowersH<char2>& tdb_powers);
+    std::vector<TDBPowersH<char2>>& tdb_powers);
 template void IncoherentDedisperser::dedisperse<
     thrust::host_vector<char3, PinnedAllocator<char3>>,
     TDBPowersH<char3>>(
     thrust::host_vector<char3, PinnedAllocator<char3>> const& tfb_powers,
-    TDBPowersH<char3>& tdb_powers);
+    std::vector<TDBPowersH<char3>>& tdb_powers);
 template void IncoherentDedisperser::dedisperse<
     thrust::host_vector<char4, PinnedAllocator<char4>>,
     TDBPowersH<char4>>(
     thrust::host_vector<char4, PinnedAllocator<char4>> const& tfb_powers,
-    TDBPowersH<char4>& tdb_powers);
+    std::vector<TDBPowersH<char4>>& tdb_powers);
 
 } // namespace skyweaver

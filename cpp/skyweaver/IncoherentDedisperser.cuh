@@ -23,7 +23,7 @@ class IncoherentDedisperser
 
     template <typename InputVectorType, typename OutputVectorType>
     void dedisperse(InputVectorType const& tfb_powers,
-                    OutputVectorType& tdb_powers);
+                    std::vector<OutputVectorType>& tdb_powers);
     std::vector<int> const& delays() const;
     int max_sample_delay() const;
 

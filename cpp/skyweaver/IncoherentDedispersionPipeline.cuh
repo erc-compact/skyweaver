@@ -48,7 +48,7 @@ class IncoherentDedispersionPipeline
     Handler& _handler;
     AggBufferVector _agg_buffers;
     DedisperserVector _dedispersers;
-    std::vector<OutputVectorType> _output_buffers;
+    std::vector<std::vector<OutputVectorType>> _output_buffers;
     Timer _timer;
 };
 
