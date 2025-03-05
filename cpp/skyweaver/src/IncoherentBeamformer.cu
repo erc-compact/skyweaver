@@ -67,7 +67,7 @@ __global__ void icbf_ftpa_general_k(
         }
     }
     for(int beamset_idx = 0; beamset_idx < nbeamsets; ++beamset_idx) {
-        acc_buffer[a_idx] = power * antenna_weights[a_idx];
+        acc_buffer[a_idx] = power * antenna_weights[beamset_idx * SKYWEAVER_NANTENNAS + a_idx];
         for(unsigned int ii = ACC_BUFFER_SIZE / 2; ii > 0; ii >>= 1) {
             __syncthreads();
             if(a_idx < ii) {

@@ -249,7 +249,12 @@ TYPED_TEST(CoherentBeamformerTester, representative_noise_test)
     // Enable all antennas in all beamsets
     typename CBT::ScalingVectorTypeD beamset_weights(config.nantennas() *
                                                          nbeamsets,
-                                                     1.0f);
+                                                    1.0f);
+
+    // Weight half of the antennas to zero in beamset 1
+    for (int ii =  config.nantennas()/2 ; ii < config.nantennas(); ++ii) {
+        beamset_weights[config.nantennas() + ii] = 0.0f;
+    }
 
     /**
     This currently causes tests to fail even though the weights are the same for
@@ -259,11 +264,13 @@ TYPED_TEST(CoherentBeamformerTester, representative_noise_test)
     Issue is that the incoherent beamformer is not populating beamsets > 0
     */
     beamset_mapping[0] = 1;
+    beamset_mapping[config.nbeams() - 1] = 1;
 
     BOOST_LOG_TRIVIAL(info) << "CB scaling: " << scale_val;
     BOOST_LOG_TRIVIAL(info) << "CB offset: " << offset_val;
 
     std::default_random_engine generator;
+    generator.seed(0x2333425234);
     std::normal_distribution<float> normal_dist(0.0, input_level);
     std::uniform_real_distribution<float> uniform_dist(0.0, 2 * pi);
 
@@ -300,16 +307,22 @@ TYPED_TEST(CoherentBeamformerTester, representative_noise_test)
             static_cast<int8_t>(std::lround(normal_dist(generator)));
     }
 
-    typename CBT::WeightsVectorTypeH fbpa_weights_host(weights_size);
-    for(int ii = 0; ii < fbpa_weights_host.size(); ++ii) {
-        // Build complex weight as C * exp(i * theta).
-        std::complex<double> val =
-            127.0f *
-            std::exp(std::complex<float>(0.0f, uniform_dist(generator)));
-        fbpa_weights_host[ii].x = static_cast<int8_t>(std::lround(val.real()));
-        fbpa_weights_host[ii].y = static_cast<int8_t>(std::lround(val.imag()));
+    typename CBT::WeightsVectorTypeH fbpa_weights_host(weights_size, char2{127, 0});
+    
+    for (int f_idx = 0; f_idx < config.nchans(); ++f_idx) {
+        for (int b_idx = 0; b_idx < config.nbeams(); ++b_idx) {
+            for (int a_idx = 0; a_idx < config.nantennas(); ++a_idx) {
+                std::size_t beamset_idx = beamset_mapping[b_idx];
+                float scale = beamset_weights[beamset_idx * SKYWEAVER_NANTENNAS + a_idx];
+                std::complex<double> val = scale * 127.0f * 
+                    std::exp(std::complex<float>(0.0f, uniform_dist(generator)));
+                std::size_t idx = f_idx * config.nbeams() * config.nantennas() + b_idx * config.nantennas() + a_idx;
+                fbpa_weights_host[idx].x = static_cast<int8_t>(std::lround(val.real()));
+                fbpa_weights_host[idx].y = static_cast<int8_t>(std::lround(val.imag()));
+            }
+        }
     }
-
+    
     typename CBT::VoltageVectorTypeD ftpa_voltages_gpu = ftpa_voltages_host;
     typename CBT::WeightsVectorTypeD fbpa_weights_gpu  = fbpa_weights_host;
     typename CBT::PowerVectorTypeD tfb_powers_gpu;
