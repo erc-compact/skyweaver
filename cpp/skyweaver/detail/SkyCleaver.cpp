@@ -102,6 +102,8 @@ std::vector<std::string> get_files(std::string directory_path,
                            directory_path);
     }
 
+    std::sort(files.begin(), files.end());
+
     return files;
 }
 
