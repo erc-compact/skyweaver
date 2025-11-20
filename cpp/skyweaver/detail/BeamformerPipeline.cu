@@ -77,7 +77,9 @@ BeamformerPipeline<CBHandler, IBHandler, StatsHandler, BeamformerTraits>::
     _weights_manager.reset(new WeightsManager(_config, _processing_stream));
     _stats_manager.reset(new StatisticsCalculator(_config, _processing_stream));
     _transposer.reset(new Transposer(_config));
-    _dispenser.reset(new BufferedDispenser(_config, _dedisperser_config, _processing_stream));
+    _dispenser.reset(new BufferedDispenser(_config,
+                                           _dedisperser_config,
+                                           _processing_stream));
     _coherent_dedisperser.reset(new CoherentDedisperser(_dedisperser_config));
     _incoherent_beamformer.reset(new IncoherentBeamformer(_config));
     _coherent_beamformer.reset(new CoherentBeamformer(_config));
@@ -94,6 +96,11 @@ template <typename CBHandler,
 BeamformerPipeline<CBHandler, IBHandler, StatsHandler, BeamformerTraits>::
     ~BeamformerPipeline()
 {
+    if (_cb_handler_thread) {
+        if (_cb_handler_thread->joinable()) {
+            _cb_handler_thread->join();
+        }
+    }
     BOOST_LOG_NAMED_SCOPE("BeamformerPipeline::~BeamformerPipeline");
     CUDA_ERROR_CHECK(cudaStreamDestroy(_h2d_copy_stream));
     CUDA_ERROR_CHECK(cudaStreamDestroy(_processing_stream));
@@ -114,13 +121,11 @@ void BeamformerPipeline<CBHandler, IBHandler, StatsHandler, BeamformerTraits>::
     _header     = header;
     _utc_offset = utc_offset;
     _cb_handler.init(_header);
-    if (_config.output_incoherent_beam())
-    {
-      _ib_handler.init(_header);
+    if(_config.output_incoherent_beam()) {
+        _ib_handler.init(_header);
     }
-    if (_config.output_statistics())
-    {
-	_stats_handler.init(_header);
+    if(_config.output_statistics()) {
+        _stats_handler.init(_header);
     }
     NVTX_RANGE_POP();
 }
@@ -167,22 +172,22 @@ void BeamformerPipeline<CBHandler, IBHandler, StatsHandler, BeamformerTraits>::
     _timer.stop("transpose TAFTP to FTPA");
     NVTX_RANGE_POP();
 
-    if ((_call_count == 0) || _config.output_statistics())
-    {
-      NVTX_RANGE_PUSH("Calculate statistics");
-      BOOST_LOG_TRIVIAL(debug) << "Checking if channel statistics update request";
-      _timer.start("calculate statistics");
-      _stats_manager->calculate_statistics(_ftpa_post_transpose);
-      _timer.stop("calculate statistics");
-      NVTX_RANGE_POP();
-      if(_call_count == 0) {
-        NVTX_RANGE_PUSH("Update scalings");
-        _timer.start("update scalings");
-        _stats_manager->update_scalings(_delay_manager->beamset_weights(),
-                                        _delay_manager->nbeamsets());
-        _timer.stop("update scalings");
+    if((_call_count == 0) || _config.output_statistics()) {
+        NVTX_RANGE_PUSH("Calculate statistics");
+        BOOST_LOG_TRIVIAL(debug)
+            << "Checking if channel statistics update request";
+        _timer.start("calculate statistics");
+        _stats_manager->calculate_statistics(_ftpa_post_transpose);
+        _timer.stop("calculate statistics");
         NVTX_RANGE_POP();
-      }
+        if(_call_count == 0) {
+            NVTX_RANGE_PUSH("Update scalings");
+            _timer.start("update scalings");
+            _stats_manager->update_scalings(_delay_manager->beamset_weights(),
+                                            _delay_manager->nbeamsets());
+            _timer.stop("update scalings");
+            NVTX_RANGE_POP();
+        }
     }
     // BOOST_LOG_TRIVIAL(debug) << "Peeking the statistics";
     // peek(_stats_manager->statistics(), 64);
@@ -208,7 +213,8 @@ void BeamformerPipeline<CBHandler, IBHandler, StatsHandler, BeamformerTraits>::
             ++freq_idx) {
             NVTX_RANGE_PUSH("Coherent dedispersion - one channels");
             auto const& tpa_voltages = _dispenser->dispense(freq_idx);
-            BOOST_LOG_TRIVIAL(debug) << "TPA voltages before dedispersion: " << tpa_voltages.describe();
+            BOOST_LOG_TRIVIAL(debug) << "TPA voltages before dedispersion: "
+                                     << tpa_voltages.describe();
             _coherent_dedisperser->dedisperse(tpa_voltages,
                                               _ftpa_dedispersed,
                                               freq_idx,
@@ -241,7 +247,7 @@ void BeamformerPipeline<CBHandler, IBHandler, StatsHandler, BeamformerTraits>::
                                        _stats_manager->cb_offsets(),
                                        _delay_manager->beamset_mapping(),
                                        _tf_ib_raw,
-                                       _btf_cbs,
+                                       _btf_cbs.a(),
                                        _nbeamsets,
                                        _processing_stream);
         _timer.stop("coherent beamforming");
@@ -249,27 +255,32 @@ void BeamformerPipeline<CBHandler, IBHandler, StatsHandler, BeamformerTraits>::
 
         NVTX_RANGE_PUSH("Coherent beamformer handler");
         _timer.start("coherent beam handler");
-        _cb_handler(_btf_cbs, dm_idx);
+        _btf_cbs.swap();
+        if (_cb_handler_thread) {
+            if (_cb_handler_thread->joinable()) {
+                _cb_handler_thread->join();
+            }
+        }
+        _cb_handler_thread.reset(
+            new std::thread([this, dm_idx]() { _cb_handler(_btf_cbs.b(), dm_idx); }));
         _timer.stop("coherent beam handler");
         NVTX_RANGE_POP();
 
-	if (_config.output_incoherent_beam())
-	{
-          NVTX_RANGE_PUSH("Incoherent beamformer handler");
-          _timer.start("incoherent beam handler");
-          _ib_handler(_tf_ib, dm_idx);
-          _timer.stop("incoherent beam handler");
-          NVTX_RANGE_POP();
-	}
+        if(_config.output_incoherent_beam()) {
+            NVTX_RANGE_PUSH("Incoherent beamformer handler");
+            _timer.start("incoherent beam handler");
+            _ib_handler(_tf_ib, dm_idx);
+            _timer.stop("incoherent beam handler");
+            NVTX_RANGE_POP();
+        }
     }
     NVTX_RANGE_POP();
-    if (_config.output_statistics())
-    {
-      NVTX_RANGE_PUSH("Stats handler");
-      _timer.start("statistics handler");
-      _stats_handler(_stats_manager->statistics());
-      _timer.stop("statistics handler");
-      NVTX_RANGE_POP();
+    if(_config.output_statistics()) {
+        NVTX_RANGE_PUSH("Stats handler");
+        _timer.start("statistics handler");
+        _stats_handler(_stats_manager->statistics());
+        _timer.stop("statistics handler");
+        NVTX_RANGE_POP();
     }
     NVTX_RANGE_POP();
 }
@@ -298,7 +309,8 @@ operator()(VoltageVectorTypeH const& taftp_on_host)
         static_cast<void*>(thrust::raw_pointer_cast(_taftp_from_host.data())),
         static_cast<void const*>(
             thrust::raw_pointer_cast(taftp_on_host.data())),
-        taftp_on_host.size() * sizeof(typename decltype(_taftp_from_host)::value_type),
+        taftp_on_host.size() *
+            sizeof(typename decltype(_taftp_from_host)::value_type),
         cudaMemcpyHostToDevice,
         _h2d_copy_stream));
     CUDA_ERROR_CHECK(cudaStreamSynchronize(_h2d_copy_stream));
@@ -306,7 +318,8 @@ operator()(VoltageVectorTypeH const& taftp_on_host)
     // Calculate the unix timestamp for the block that is about to be
     // processed
     _unix_timestamp =
-        _header.utc_start + _utc_offset + //This UTC offset is comming from the start-time offset for file reading
+        _header.utc_start + _utc_offset + // This UTC offset is comming from the
+                                          // start-time offset for file reading
         static_cast<long double>(_call_count * _sample_clock_tick_per_block) /
             _header.sample_clock;
     process();
