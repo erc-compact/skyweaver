@@ -75,8 +75,7 @@ struct is_dv_copyable: std::false_type {
 };
 
 template <template <typename, typename> class Container1,
-          template <typename, typename>
-          class Container2,
+          template <typename, typename> class Container2,
           typename T,
           typename A1,
           typename A2,
@@ -133,7 +132,8 @@ struct DescribedVector {
      * @param sizes The sizes of the dimensions (must match the number of
      * dimensions)
      */
-    DescribedVector(std::initializer_list<std::size_t> sizes, value_type default_value)
+    DescribedVector(std::initializer_list<std::size_t> sizes,
+                    value_type default_value)
         : _dms_stale(true), _frequencies_stale(true), _sizes(sizes),
           _dims{dims...}, _tsamp(0.0)
     {
@@ -230,11 +230,9 @@ struct DescribedVector {
      */
     auto const& operator[](std::size_t idx) const { return _vector[idx]; }
 
-
     // also the at() method
     auto& at(std::size_t idx) { return _vector[idx]; }
     auto const& at(std::size_t idx) const { return _vector[idx]; }
-    
 
     /**
      * @brief Resize the dimensions of the vector
@@ -366,13 +364,12 @@ struct DescribedVector {
      * @param freqs
      */
     void frequencies(FrequenciesType const& freqs)
-    {        
+    {
         if(freqs.size() != get_dim_extent<FreqDim>()) {
             throw std::runtime_error("Invalid number of frequecies passed.");
         }
         _frequencies_stale = false;
         _frequencies       = freqs;
-       
     }
 
     /**
@@ -471,7 +468,6 @@ struct DescribedVector {
      *          in this parameter.
      */
     double utc_offset() const { return _utc_offset; }
-
 
     /**
      * @brief Set the latency of this data w.r.t. the stream
@@ -692,18 +688,48 @@ template <typename T>
 using FPAStatsD =
     DescribedVector<thrust::device_vector<T>, FreqDim, PolnDim, AntennaDim>;
 
+// skycleaver vectors
+template <typename T>
+using TDBPowersStdH =
+    DescribedVector<std::vector<T>, TimeDim, DispersionDim, BeamDim, PolnDim>;
+template <typename T>
+using TFPowersStdH = DescribedVector<std::vector<T>, TimeDim, FreqDim>;
 
-//skycleaver vectors
-template <typename T>
-using TDBPowersStdH = DescribedVector<std::vector<T>,
-                                   TimeDim,
-                                   DispersionDim,
-                                   BeamDim,
-                                   PolnDim>;
-template <typename T>
-using TFPowersStdH = DescribedVector<std::vector<T>,
-                                  TimeDim,
-                                  FreqDim>;
+template <typename DVType>
+class DoubleDescribedVector
+{
+  public:
+    // Constructor with perfect forwarding
+    template <typename... Args>
+    DoubleDescribedVector(Args&&... args)
+        : _a(std::forward<Args>(args)...), _b(std::forward<Args>(args)...),
+          _front(&_a), _back(&_b)
+    {
+    }
+
+    // Mutable access to front (active) buffer
+    DVType& a() { return *_front; }
+
+    // Const access to front (active) buffer
+    const DVType& a() const { return *_front; }
+    const DVType& a_ref() const { return *_front; } // optional alias
+
+    // Mutable access to back (staging) buffer
+    DVType& b() { return *_back; }
+
+    // Const access to back (staging) buffer
+    const DVType& b() const { return *_back; }
+    const DVType& b_ref() const { return *_back; } // optional alias
+
+    // Swap front and back buffers
+    void swap() { std::swap(_front, _back); }
+
+  private:
+    DVType _a;
+    DVType _b;
+    DVType* _front;
+    DVType* _back;
+};
 
 } // namespace skyweaver
 
