@@ -21,7 +21,8 @@ beamformer_config:
        141.3, 141.8, 142.3, 142.8]
 beam_sets:
   # First beam set does blah blah blah
-  - antenna_set: ['m000','m002','m003','m004','m005','m007','m008','m009','m010','m011',
+  - name: hires
+    antenna_set: ['m000','m002','m003','m004','m005','m007','m008','m009','m010','m011',
                   'm012','m014','m015','m016','m017','m018','m019','m020','m021','m022',
                   'm023','m024','m025','m026','m027','m029','m030','m031','m032','m033',
                   'm034','m035','m036','m037','m038','m039','m040','m041','m042','m043',
@@ -37,28 +38,25 @@ beam_sets:
       - 'J1748-2021G,radec,17:48:52.950,-20:21:38.900'
       - 'J1748-2021H,radec,17:48:53.1996,-20:21:35.251'
     tilings:
-      - nbeams: 20
+      - name: 0
+        nbeams: 480
         reference_frequency: null
         edelay: null
         target: null
         overlap: 0.7
-      - nbeams: 33
-        reference_frequency: null
-        edelay: null
-        target: null
-        shape: 'hexagon'
-        method: 'variable_overlap'
-        shape_parameters: [0.16656555, 0.0]
-        coordinate_type: 'galactic'
   # Second beamset does blah blah blah
-  - antenna_set: ['m000','m002','m003','m004','m005','m007','m008','m009','m010','m011',
+  - name: lores
+    antenna_set: ['m000','m002','m003','m004','m005','m007','m008','m009','m010','m011',
                    'm012','m014','m015','m016','m017','m018','m019','m020','m021','m022',
                    'm023','m024','m025','m026','m027','m029','m030','m031','m032','m033',
                    'm034','m035','m036','m037','m038','m039','m040']
     beams: []
     tilings:
-      - nbeams: 12
+      - name: 2
+        nbeams: 200
         reference_frequency: null
         edelay: 0.0
         target: null
         overlap: 0.7
+
+beam_filter: null

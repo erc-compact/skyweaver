@@ -14,6 +14,10 @@ import sys
 from collections import defaultdict
 from matplotlib.patches import Ellipse
 import matplotlib.patches as mpatches
+from matplotlib.backends.backend_pdf import PdfPages
+from mpl_toolkits.axes_grid1 import make_axes_locatable
+from matplotlib.colors import SymLogNorm
+from scipy.interpolate import RegularGridInterpolator
 # 3rd party imports
 import h5py
 import yaml
@@ -685,6 +689,8 @@ class BeamformerConfig:
     coherent_dms: list[float]
     # List of beam sets (sets of beams from a common subarray)
     beam_sets: list[BeamSet]
+    # Filter parameters
+    filter: dict[str]
 
     @classmethod
     def from_file(cls, config_file: str) -> Self:
@@ -699,9 +705,9 @@ class BeamformerConfig:
         with open(config_file, "r", encoding="utf-8") as f:
             data = yaml.safe_load(f)
         bfc = data["beamformer_config"]
+        filter_config = data.get("filter", {"enabled": False})
         beam_sets = []
         for bs in data["beam_sets"]:
-            print(bs)
             beam_sets.append(
                 BeamSet(
                     bs["name"],
@@ -717,7 +723,8 @@ class BeamformerConfig:
             bfc["stokes_mode"],
             bfc["subtract_ib"],
             bfc["coherent_dms"],
-            beam_sets
+            beam_sets,
+            filter_config
         )
 
 def make_tiling(
@@ -794,7 +801,7 @@ def make_tiling(
     ]
   
     psfsim: PsfSim = PsfSim(antenna_strings, ref_freq)
-    psf_beam_shape: BeamShape = psfsim.get_beam_shape(target, epoch.unix)
+    psf_beam_shape: BeamShape = psfsim.get_beam_shape(target, epoch.unix, beam_number=400)
     #Build Mosaic command here. Remove T
     mosaic_epoch = epoch.iso.replace("T", " ")
     mosaic_epoch = mosaic_epoch.replace("-", ".")
@@ -823,6 +830,218 @@ def pad_ra_dec(ra, dec):
     padded_dec = ':'.join(dec_parts)
     
     return padded_ra, padded_dec
+
+class PsfInterpolator:
+    """Handles interpolation of a PSF image onto arbitrary (x,y) coordinate grids."""
+    def __init__(self, psf, boresight):
+        self._psf = psf
+        self._cdelt = psf.wcs_header['cdelt']
+        image = self._psf.image
+
+        x = self._calc_offsets(image.shape[0], self._cdelt[0]) + boresight[0] - self._cdelt[0] / 2
+        y = self._calc_offsets(image.shape[1], self._cdelt[1]) - boresight[1] - self._cdelt[1] / 2
+
+        self._interpolator = RegularGridInterpolator(
+            (y, x), image, bounds_error=False, fill_value=-1
+        )
+
+    @staticmethod
+    def _calc_offsets(npix, width):
+        half = (npix * width) / 2
+        return np.linspace(-half + width/2, half - width/2, npix)
+
+    def __call__(self, pts):
+        return self._interpolator(pts)
+    
+
+def initialize_beam_table(tilings):
+    dtype = [
+        ("tiling_idx", "uint32"),
+        ("tiling_beam_idx", "uint32"),
+        ("global_beam_idx", "uint32"),
+        ("coordinates", [("x", "float32"), ("y", "float32")]),
+        ("count", "uint32"),
+        ("relative_count", "float32"),
+        ("keep", "bool")
+    ]
+    total_beams = sum([t.beam_num for _, t in tilings])
+    table = np.zeros(total_beams, dtype=dtype)
+    n = 0
+
+    for tiling_idx, (bs, tiling) in enumerate(tilings):
+        for beam_idx, coord in enumerate(tiling.coordinates):
+            table[n] = (
+                tiling_idx,
+                beam_idx,
+                n,
+                (coord[0], coord[1]),
+                0,
+                0.0,
+                True
+            )
+            n += 1
+
+    return table
+
+
+def generate_grid(beam_table, resolution, margin_fraction=0.1):
+    def generate_axis(coords):
+        margin = abs((coords.max() - coords.min())) * margin_fraction 
+        lower_bound = coords.min() - margin
+        upper_bound = coords.max() + margin
+        npix = int((upper_bound - lower_bound) / resolution)
+        return np.linspace(lower_bound, upper_bound, npix)
+    x = generate_axis(beam_table["coordinates"]["x"])
+    y = generate_axis(beam_table["coordinates"]["y"])
+    X, Y = np.meshgrid(x, y)
+    grid_coords = np.stack((X, Y), axis=-1)
+    return x, y, grid_coords
+
+
+def compute_gain_and_mask(tilings, all_beams, grid_coords, gain_cap, gain_tol):
+    gain = np.zeros(grid_coords.shape[:2], dtype="float32")
+    mask = np.full(grid_coords.shape[:2], -1, dtype="int32")
+
+    for tiling_idx, (bs, tiling) in enumerate(tilings):
+        array_gain = len(bs.anntenna_names)
+        tiling_data = all_beams[all_beams["tiling_idx"] == tiling_idx]
+
+        for row in tiling_data:
+            interp = PsfInterpolator(tiling.beam_shape.psf, row["coordinates"])
+            gmap = interp(grid_coords)
+            gmap[gmap < gain_cap] = -1.0
+
+            val = gmap * array_gain
+            update = val >= (gain_tol * gain)
+            mask[update] = row["global_beam_idx"]
+            gain = np.maximum(gain, val)
+
+    return gain, mask
+
+
+def update_beam_counts(tilings, all_beams, mask, low_influence_tol):
+    for tiling_idx, (bs, tiling) in enumerate(tilings):
+        tiling_data = all_beams[all_beams["tiling_idx"] == tiling_idx]
+        lo, hi = tiling_data["global_beam_idx"].min(), tiling_data["global_beam_idx"].max()
+
+        valid = (mask >= lo) & (mask <= hi)
+        unique, counts = np.unique(mask[valid], return_counts=True)
+
+        m = np.median(counts)
+        all_beams["count"][unique] = counts
+        all_beams["relative_count"][unique] = counts / m
+
+    all_beams["keep"] = all_beams["relative_count"] >= low_influence_tol
+
+def plot_tiling_influence(tiling_idx, tiling_data, pdf=None):
+    fig, ax = plt.subplots(figsize=(6, 5))
+
+    counts = tiling_data["count"]
+    bad = tiling_data[tiling_data["keep"] == False]
+
+    norm = SymLogNorm(
+        linthresh=0.9,
+        linscale=1.0,
+        vmin=counts.min(),
+        vmax=counts.max()
+    )
+
+    sc = ax.scatter(
+        tiling_data["coordinates"]["y"],
+        tiling_data["coordinates"]["x"],
+        c=counts,
+        cmap="Wistia",
+        norm=norm
+    )
+
+    ax.scatter(
+        bad["coordinates"]["y"],
+        bad["coordinates"]["x"],
+        facecolor="none",
+        edgecolor="k",
+        lw=1.5,
+        label="Excised Beams"
+    )
+
+    plt.colorbar(sc, label="Beam Pixel Count")
+
+    ax.set_title(f"Tiling {tiling_idx}: Influence Counts")
+    ax.set_xlabel("Y Offset (deg)")
+    ax.set_ylabel("X Offset (deg)")
+    ax.legend()
+    plt.tight_layout()
+    if pdf:
+        pdf.savefig()
+        plt.close()
+    else:
+        plt.show()
+
+def plot_gain_and_mask(gain, mask, x, y, pdf=None, suffix=""):
+    fig, ax = plt.subplots(1, 2, figsize=(12, 5), sharey=True)
+
+    if suffix:
+        suffix = f" ({suffix})"
+
+    ax[0].set_title("Peak Gain Map" + suffix)
+    im0 = ax[0].imshow(gain, extent=[x.min(), x.max(), y.min(), y.max()], 
+                       origin="lower", cmap="hot")
+    plt.colorbar(im0, ax=ax[0], label="Gain")
+
+    ax[1].set_title("Beam Dominance Mask" + suffix)
+    divider = make_axes_locatable(ax[1])
+    cax = divider.append_axes('right', size='5%', pad=0.05)
+    im1 = ax[1].imshow(mask, extent=[x.min(), x.max(), y.min(), y.max()],
+                       cmap="gist_ncar", origin="lower")
+    plt.colorbar(im1, cax=cax, label="Beam Index")
+
+    for axis in ax:
+        axis.set_xlabel("Offset (deg)")
+        axis.set_ylabel("Offset (deg)")
+
+    plt.tight_layout()
+    if pdf:
+        pdf.savefig()
+        plt.close()
+    else:
+        plt.show()
+
+def filter_tilings(beamformer_config, bs_tilings, outfile):
+    log.info("Filtering generated beam sets")
+    bc = beamformer_config
+    tilings = []
+    for bs, subtilings in zip(bc.beam_sets, bs_tilings):
+        for tiling in subtilings:
+            tilings.append((bs, tiling))
+    all_beams = initialize_beam_table(tilings)
+    x, y, grid_coords = generate_grid(all_beams, bc.filter["resolution"], margin_fraction=bc.filter["margin"])
+    log.debug("Computing gain and beam dominance maps")
+    gain, mask = compute_gain_and_mask(tilings, all_beams, grid_coords, bc.filter["gain_cap"], bc.filter["gain_tol"])
+    log.debug("Updating beam influence counts")
+    update_beam_counts(tilings, all_beams, mask, bc.filter["low_influence_tol"])
+    log.debug("Generating output plots")
+    with PdfPages(f"{outfile}_filter.pdf") as pdf:
+        # High-level plot
+        plot_gain_and_mask(gain, mask, x, y, pdf, "pre")
+        
+        # Per-tiling influence plots
+        for tiling_idx, _ in enumerate(tilings):
+            tiling_data = all_beams[all_beams["tiling_idx"] == tiling_idx]
+            plot_tiling_influence(tiling_idx, tiling_data, pdf)
+    
+        # Modify tilings in-place
+        for tiling_idx, (bs, tiling) in enumerate(tilings):
+            keepers = all_beams[(all_beams["tiling_idx"] == tiling_idx) & all_beams["keep"]]
+            tiling.coordinates = keepers["coordinates"].tolist()
+            tiling.num_beams = len(tiling.coordinates)
+        
+        all_beams_post = initialize_beam_table(tilings)
+        gain_post, mask_post = compute_gain_and_mask(tilings, all_beams_post, grid_coords, 
+                                                     bc.filter["gain_cap"], bc.filter["gain_tol"])
+
+        # High-level plots
+        plot_gain_and_mask(gain_post, mask_post, x, y, pdf, "post")
+    
+    return bs_tilings
 
 def create_delays(
         session_metadata: SessionMetadata,
@@ -902,6 +1121,7 @@ def create_delays(
     
     #Iterate through all tilings
     bs_tilings = []
+    bs_list = []
     for bs in bc.beam_sets:
         tilings = []
         sorted_antennas = sorted(bs.anntenna_names)
@@ -914,6 +1134,19 @@ def create_delays(
                 #Add the tiling to the delay engine
                 de.add_tiling(tiling, subarray_subset)
                 tilings.append(tiling)
+        bs_tilings.append(tilings)
+    
+    if bc.filter.get("enable", False):
+        bs_tilings = filter_tilings(bc, bs_tilings, outfile)
+     
+    for bs, tilings in zip(bc.beam_sets, bs_tilings):
+        sorted_antennas = sorted(bs.anntenna_names)
+        subarray_subset = om.get_subarray(sorted_antennas)
+        antenna_string = ','.join(sorted_antennas)
+        if bs.tilings is not None:
+            output_prefix = f"{outfile}_{bs.name}" if outfile is not None else None
+            for tiling in tilings:
+                _, psf_beamshape, mosaic_command = make_tiling(pointing, subarray_subset, tiling_desc)
                 cb_beamshape = tiling.meta["axis"][:3] #axisH, axisV, angle
                 overlap = tiling.meta["axis"][-1]
                 nbeams_requested = tiling_desc['nbeams']
@@ -937,8 +1170,8 @@ def create_delays(
                     dec_dms = coord.dec.to_string(unit=u.degree, sep=':', precision=1, alwayssign=True, pad=True)
                     plot_beams.append((f"{bs.name}_{index:03d}", ra_hms, dec_dms, round(cb_beamshape[0], 5), round(cb_beamshape[1], 5), round(cb_beamshape[2], 5), current_beam_set_id, overlap, len(sorted_antennas), 'tiling'))
                     neighbouring_beams.append((f"{bs.name}_{index:03d}", ra_hms, dec_dms, round(psf_beamshape.axisH, 5), round(psf_beamshape.axisV, 5), round(psf_beamshape.angle, 5), current_beam_set_id, 0.5, len(sorted_antennas), 'tiling'))
-        bs_tilings.append(tilings)
     
+    # What is this for???    
     target = tiling_desc.get("target", None)
     if target is None:
         print("No target specified")
