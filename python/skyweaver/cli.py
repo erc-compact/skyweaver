@@ -192,14 +192,14 @@ def delays_create(
             )
     else:
         fname = outfile
-    delays, targets, _ = skyweaver.create_delays(sm, bc, pointing, step=step, outfile=fname)
+    all_delays, _, _ = skyweaver.create_delays(sm, bc, pointing, step=step, outfile=fname)
     
-    log.info(f"Writing delay model to file {fname}.bin")
-    with open(fname + ".bin", "wb") as fo:
-        for delay_model in delays:
-            fo.write(delay_model.to_bytes())
+    for name, delays in all_delays.items():
+        log.info(f"Writing delay model to file {fname}.bin")
+        with open(fname + f"_{name}_.bin", "wb") as fo:
+            for delay_model in delays:
+                fo.write(delay_model.to_bytes())
     
-        
 
 def parse_default_args(args):
     """Execute functions for common arguments
@@ -224,7 +224,7 @@ def cli():
     """
     parser = argparse.ArgumentParser(prog="skyweaver", add_help=True)
     l1subparsers = parser.add_subparsers(help="sub-command help")
-
+    
     # sw metadata
     metadata = l1subparsers.add_parser("metadata", help="Tools for observation metadata files")
     metadata_subparsers = metadata.add_subparsers(help="sub-command help")

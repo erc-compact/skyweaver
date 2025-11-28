@@ -144,6 +144,7 @@ beam_sets:
         overlap: 0.5
         edelay: 3600
 
+split_by_beamset: true
 filter:
   enable: true
   resolution: 0.0002 # degrees

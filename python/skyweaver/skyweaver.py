@@ -691,6 +691,8 @@ class BeamformerConfig:
     beam_sets: list[BeamSet]
     # Filter parameters
     filter: dict[str]
+    # Flag for splitting into multiple output files
+    split_delay_files: bool
 
     @classmethod
     def from_file(cls, config_file: str) -> Self:
@@ -706,6 +708,7 @@ class BeamformerConfig:
             data = yaml.safe_load(f)
         bfc = data["beamformer_config"]
         filter_config = data.get("filter", {"enabled": False})
+        split_delay_files = data.get("split_by_beamset", False)
         beam_sets = []
         for bs in data["beam_sets"]:
             beam_sets.append(
@@ -724,7 +727,8 @@ class BeamformerConfig:
             bfc["subtract_ib"],
             bfc["coherent_dms"],
             beam_sets,
-            filter_config
+            filter_config,
+            split_delay_files
         )
 
 def make_tiling(
@@ -1074,12 +1078,16 @@ def create_delays(
         end_epoch = pointing.end_epoch
     om = session_metadata
     bc = beamformer_config
+    split = bc.split_delay_files
     log.info("Creating delays for target %s", pointing.phase_centre.name)
     log.info("Start epoch: %s (UNIX %f)", start_epoch.isot, start_epoch.unix)
     log.info("End epoch: %s (UNIX %f)", end_epoch.isot, end_epoch.unix)
     log.info("Step size: %s", step.to(u.s))
     full_subarray = om.get_subarray()
-    de = DelayEngine(full_subarray, pointing.phase_centre)
+    if split:
+        de = {bs.name: DelayEngine(full_subarray, pointing.phase_centre) for bs in bc.beam_sets}
+    else:
+        de = DelayEngine(full_subarray, pointing.phase_centre)
     # Initialize beam_set_lookup dictionary to track unique beam sets
     beam_set_lookup = {}
     beam_set_id = 0
@@ -1097,7 +1105,10 @@ def create_delays(
             for target_desc in bs.beams:
                 target = Target(target_desc)
                 #Add the beam to the delay engine
-                de.add_beam(target, subarray_subset)
+                if split:
+                    de[bs.name].add_beam(target, subarray_subset)
+                else:
+                    de.add_beam(target, subarray_subset)
                 beam_key = (antenna_string, overlap, nbeams_requested)
                 if beam_key not in beam_set_lookup:
                     beam_set_lookup[beam_key] = beam_set_id
@@ -1132,13 +1143,16 @@ def create_delays(
             for tiling_desc in bs.tilings:
                 tiling, psf_beamshape, mosaic_command = make_tiling(pointing, subarray_subset, tiling_desc)
                 #Add the tiling to the delay engine
-                de.add_tiling(tiling, subarray_subset)
+                if split:
+                    de[bs.name].add_tiling(tiling, subarray_subset)
+                else:
+                    de.add_tiling(tiling, subarray_subset)
                 tilings.append(tiling)
         bs_tilings.append(tilings)
     
     if bc.filter.get("enable", False):
         bs_tilings = filter_tilings(bc, bs_tilings, outfile)
-     
+    
     for bs, tilings in zip(bc.beam_sets, bs_tilings):
         sorted_antennas = sorted(bs.anntenna_names)
         subarray_subset = om.get_subarray(sorted_antennas)
@@ -1182,14 +1196,30 @@ def create_delays(
     plot_beams_df = pd.DataFrame(plot_beams, columns=column_list)
     #Plot beams has beam shape for the overlap requested, wheras neighbouring beams has the PSF shape (50% overlap)
     neighbouring_beams_df = pd.DataFrame(neighbouring_beams, columns=column_list)
-    log.info("Calculating solutions for %d antennas and %d beams", full_subarray.nantennas, de.nbeams)
-    delays = de.calculate_delays(start_epoch, end_epoch, step)
+    log.info("Calculating solutions for all beam sets")
+    if split:
+        delays = {key: val.calculate_delays(start_epoch, end_epoch, step) for key, val in de.items()}
+    else:
+        delays = de.calculate_delays(start_epoch, end_epoch, step)
     log.info("Beams and tilings written to %s.targets", outfile)
     plot_beams_df.to_csv(outfile + ".targets", index=False)
+    if split:
+        write_per_tiling_target_files(plot_beams_df, outfile, [bs.name for bs in bc.beam_sets])
     boresight_coords = psf_beamshape.bore_sight.equatorial
     plot_multiple_tilings(pointing, neighbouring_beams_df, plot_beams_df, boresight_coords, outfile)
-    return delays, de.targets, bs_tilings
+    if split:
+        targets = {key: val.targets for key, val in de.items()}
+        return delays, targets, bs_tilings
+    else:
+        return {"all": delays}, {"all": de.targets}, bs_tilings
 
+
+def write_per_tiling_target_files(beam_data, base_outfile, names):
+    for name in names:
+        mask = beam_data["name"].str.startswith(f"{name}_")
+        beam_data[mask].to_csv(base_outfile + f"_{name}.targets", index=False)
+    
+    
 def plot_multiple_tilings(pointing, neighbouring_beams_df, plot_beams_df, boresight_coords, outfile, HD=True, beam_size_scaling=1.0, annotate_beam_names=False):
     # Initialize WCS projection
     wcs_properties = wcs.WCS(naxis=2)
