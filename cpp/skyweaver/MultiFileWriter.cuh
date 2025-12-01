@@ -24,6 +24,7 @@ struct MultiFileWriterConfig {
     std::string extension;
     std::string output_basename;
     std::string suffix;
+    PreWriteConfig pre_write;
 
     MultiFileWriterConfig()
         : header_size(4096), max_file_size(2147483647), stokes_mode("I"),
@@ -40,7 +41,7 @@ struct MultiFileWriterConfig {
           stokes_mode(stokes_mode), output_dir(output_dir), prefix(prefix),
           extension(extension), suffix(suffix), output_basename("") {};
 
-    
+
     std::string to_string()
     {
         return "header_size: " + std::to_string(header_size) +
@@ -60,6 +61,7 @@ template <typename VectorType>
 class MultiFileWriter
 {
   public:
+    using PreWriteCallback = std::function<void(MultiFileWriterConfig const&)>;
     using CreateStreamCallBackType =
         std::function<std::unique_ptr<FileOutputStream>(
             MultiFileWriterConfig const&,
@@ -79,9 +81,17 @@ class MultiFileWriter
     MultiFileWriter(PipelineConfig const& config,
                     std::string tag,
                     CreateStreamCallBackType create_stream_callback);
+    MultiFileWriter(PipelineConfig const& config,
+                    std::string tag,
+                    CreateStreamCallBackType create_stream_callback,
+                    PreWriteCallback pre_write_callback);
     MultiFileWriter(MultiFileWriterConfig config,
                     std::string tag,
                     CreateStreamCallBackType create_stream_callback);
+    MultiFileWriter(MultiFileWriterConfig config,
+                    std::string tag,
+                    CreateStreamCallBackType create_stream_callback,
+                    PreWriteCallback pre_write_callback);
     MultiFileWriter(MultiFileWriter const&) = delete;
 
     /**
@@ -129,6 +139,7 @@ class MultiFileWriter
     std::string get_extension(VectorType const& stream_data);
     CreateStreamCallBackType _create_stream_callback;
     MultiFileWriterConfig _config;
+    PreWriteCallback _pre_write_callback;
     std::string _tag;
     ObservationHeader _header;
     std::map<std::size_t, std::unique_ptr<FileOutputStream>> _file_streams;
