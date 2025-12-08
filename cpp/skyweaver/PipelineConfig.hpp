@@ -291,7 +291,18 @@ class PipelineConfig
     /**
      * @brief      Return the total number of antennas that will be beamformed
      */
+
     std::size_t nantennas() const { return SKYWEAVER_NANTENNAS; }
+
+    /**
+     * @brief      Set the number of beams per output file
+     */
+    void nbeams_per_file(std::size_t nbeams_per_file);
+
+    /**
+     * @brief      Get the number of beams per output file
+     */
+    std::size_t nbeams_per_file() const;
 
     /**
      * @brief      Return the total number of frequency channels in the input
@@ -372,6 +383,7 @@ class PipelineConfig
     float _output_level;
     DedispersionPlan _ddplan;
     mutable std::vector<double> _channel_frequencies;
+    std::size_t _nbeams_per_file;
 };
 
 } // namespace skyweaver

@@ -58,6 +58,7 @@ NCHAN        64
 NBEAM       800
 ORDER        TFB
 CHAN0_IDX 2688
+BEAM0_IDX    0
 )";
 
 #define MJD_UNIX_EPOCH 40587.0
@@ -160,6 +161,7 @@ create_dada_file_stream(MultiFileWriterConfig const& config,
                 header_writer.set<std::string>("ORDER",
                                                stream_data.dims_as_string());
                 header_writer.set<std::size_t>("CHAN0_IDX", header.chan0_idx);
+                header_writer.set<std::size_t>("BEAM0_IDX", stream_data.beam0_idx());
                 header_writer.set<std::size_t>("FILE_SIZE", filesize);
                 header_writer.set<std::size_t>("FILE_NUMBER", file_idx);
                 header_writer.set<std::size_t>("OBS_OFFSET", bytes_written);

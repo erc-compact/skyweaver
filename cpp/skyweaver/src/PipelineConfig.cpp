@@ -15,7 +15,9 @@ PipelineConfig::PipelineConfig()
       _bw(13375000.0), _channel_frequencies_stale(true),
       _gulp_length_samps(4096), _start_time(0.0f),
       _duration(std::numeric_limits<float>::infinity()), _total_nchans(4096),
-      _stokes_mode("I"), _output_level(24.0f), _output_statistics(true), _output_incoherent_beam(true)
+      _stokes_mode("I"), _output_level(24.0f),
+      _output_statistics(true), _output_incoherent_beam(true),
+      _nbeams_per_file(SKYWEAVER_NBEAMS)
 {
 }
 
@@ -264,4 +266,13 @@ void PipelineConfig::total_nchans(std::size_t nchans)
     _total_nchans = nchans;
 }
 
+std::size_t PipelineConfig::nbeams_per_file() const
+{
+    return _nbeams_per_file;
+}
+
+void PipelineConfig::nbeams_per_file(std::size_t nbeams_per_file)
+{
+    _nbeams_per_file = nbeams_per_file;
+}
 } // namespace skyweaver

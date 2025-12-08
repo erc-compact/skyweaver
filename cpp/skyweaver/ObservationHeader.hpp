@@ -17,6 +17,7 @@ struct ObservationHeader {
     std::size_t nantennas = 0; // Number of antennas
     std::size_t sample_clock_start = 0; // The start epoch in sampler ticks
     std::size_t chan0_idx          = 0; // The index of the first channel
+    std::size_t beam0_idx          = 0; // The index of the first beam
     std::size_t obs_nchans =
         0; // The total number of channels in the observation
     long double bandwidth = 0.0; // Bandwidth in Hz of the subband

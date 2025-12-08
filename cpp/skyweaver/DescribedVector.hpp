@@ -105,7 +105,7 @@ struct DescribedVector {
      */
     DescribedVector()
         : _dms_stale(true), _frequencies_stale(true), _dims{dims...},
-          _tsamp(0.0)
+          _tsamp(0.0), _beam0_idx(0)
     {
     }
 
@@ -117,7 +117,7 @@ struct DescribedVector {
      */
     DescribedVector(std::initializer_list<std::size_t> sizes)
         : _dms_stale(true), _frequencies_stale(true), _sizes(sizes),
-          _dims{dims...}, _tsamp(0.0)
+          _dims{dims...}, _tsamp(0.0), _beam0_idx(0)
     {
         if(_sizes.size() != sizeof...(dims)) {
             throw std::invalid_argument(
@@ -135,7 +135,7 @@ struct DescribedVector {
     DescribedVector(std::initializer_list<std::size_t> sizes,
                     value_type default_value)
         : _dms_stale(true), _frequencies_stale(true), _sizes(sizes),
-          _dims{dims...}, _tsamp(0.0)
+          _dims{dims...}, _tsamp(0.0), _beam0_idx(0)
     {
         if(_sizes.size() != sizeof...(dims)) {
             throw std::invalid_argument(
@@ -171,7 +171,8 @@ struct DescribedVector {
           _frequencies(other._frequencies), _dms_stale(other._dms_stale),
           _tsamp(other._tsamp), _utc_offset(other._utc_offset),
           _reference_dm(other._reference_dm),
-          _frequencies_stale(other._frequencies_stale)
+          _frequencies_stale(other._frequencies_stale),
+          _beam0_idx(other._beam0_idx)
     {
     }
 
@@ -206,6 +207,7 @@ struct DescribedVector {
         _tsamp             = other._tsamp;
         _utc_offset        = other._utc_offset;
         _reference_dm      = other._reference_dm;
+        _beam0_idx         = other._beam0_idx;
     }
 
     /**
@@ -386,6 +388,23 @@ struct DescribedVector {
         _frequencies.resize(1, freq);
         _frequencies[0] = freq;
     }
+
+    /**
+     * @brief Set the index of the first beam in the file
+     *
+     * @param index
+     */
+    void beam0_idx(std::size_t idx)
+    {
+        _beam0_idx = idx;
+    }
+
+    /**
+     * @brief Return the index of the first beam in the file
+     *
+     * @return std::size_t
+     */
+    std::size_t beam0_idx() const { return _beam0_idx; }
 
     /**
      * @brief Return the number of frequency channels
@@ -590,6 +609,7 @@ struct DescribedVector {
     double _tsamp       = 0.0;
     double _utc_offset  = 0.0;
     float _reference_dm = 0.0;
+    std::size_t _beam0_idx = 0;
     VectorType _vector;
 };
 

@@ -50,6 +50,8 @@ class IncoherentDedispersionPipeline
     DedisperserVector _dedispersers;
     std::vector<OutputVectorType> _output_buffers;
     Timer _timer;
+    OutputVectorType _beamsplit_buffer;
+    std::size_t _n_tdb_files;
 };
 
 } // namespace skyweaver
