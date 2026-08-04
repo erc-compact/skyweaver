@@ -209,13 +209,17 @@ create_sigproc_file_stream(MultiFileWriterConfig const& config,
     double foff = -1 *
                   static_cast<double>(header.obs_bandwidth / header.nchans) /
                   1e6; // MHz
-    // 1* foff instead of 0.5* foff below because the dedispersion causes all
-    // the frequencies to change by half the bandwidth to refer to the bottom of
-    // the channel
+    /**
+    Previously I had: 
+    1* foff instead of 0.5* foff below because the dedispersion causes all
+    the frequencies to change by half the bandwidth to refer to the bottom of
+    the channel
+
+    But now we think this is incorrect. Reverting back to 0.5 * foff
+    **/
     double fch1 =
         static_cast<double>(header.obs_frequency + header.obs_bandwidth / 2.0) /
-            1e6 +
-        foff; // MHz
+            1e6 + 0.5 * foff; // MHz
 
     double utc_start = static_cast<double>(header.utc_start);
     header.mjd_start = (utc_start / 86400.0) + MJD_UNIX_EPOCH;

@@ -74,7 +74,7 @@ void Header::set<long double>(char const* key, long double value)
 {
     BOOST_LOG_TRIVIAL(debug)
         << "Header set: " << key << " = " << std::setprecision(15) << value;
-    ascii_header_set(this->_header.ptr(), key, "%Lf", value);
+    ascii_header_set(this->_header.ptr(), key, "%Lg", value);
 }
 
 template <>
