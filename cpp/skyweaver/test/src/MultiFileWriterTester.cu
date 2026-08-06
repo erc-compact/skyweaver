@@ -1,5 +1,6 @@
 #include "skyweaver/DescribedVector.hpp"
 #include "skyweaver/test/MultiFileWriterTester.cuh"
+#include "skyweaver/MultiFileWriter.cuh"
 
 #include <cstdio>
 #include <filesystem>
@@ -43,7 +44,12 @@ TEST_F(MultiFileWriterTester, simple_updating_write)
 
     BOOST_LOG_TRIVIAL(debug)
         << "Testing in tmp directory: " << _config.output_dir();
-    MultiFileWriter<InputType> mfw(_config);
+
+    using WriterType = MultiFileWriter<InputType>;
+    typename WriterType::CreateStreamCallBackType create_stream_callback = detail::create_dada_file_stream<InputType>;
+       
+
+    WriterType mfw(_config, "test", create_stream_callback);
     _config.max_output_filesize(1000);
     InputType powers({_config.nsamples_per_block(), 64, _config.nbeams()});
     powers.dms({0.0});

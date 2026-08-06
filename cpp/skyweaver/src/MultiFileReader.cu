@@ -28,7 +28,7 @@ std::size_t MultiFileReader::safe_read(std::ifstream& input_stream,
                   << std::strerror(errno);
         throw std::runtime_error(error_msg.str().c_str());
     }
-    BOOST_LOG_TRIVIAL(debug) << "Read complete";
+    BOOST_LOG_TRIVIAL(debug) << "Safe Read complete";
     return nbytes_read;
 }
 
@@ -39,6 +39,7 @@ MultiFileReader::MultiFileReader(PipelineConfig const& config)
 
 MultiFileReader::MultiFileReader(std::vector<std::string> dada_files,std::size_t dada_header_size, bool check_input_contiguity)
     : _current_file_idx(0), _current_position(0), _eof_flag(false) {
+
     static_assert(sizeof(char2) == 2 * sizeof(char),
                   "Size of char2 is not as expected");
 
@@ -46,6 +47,13 @@ MultiFileReader::MultiFileReader(std::vector<std::string> dada_files,std::size_t
     this->_dada_files       = dada_files;
     this->_dada_header_size = dada_header_size;
     std::vector<char> header_bytes(_dada_header_size);
+
+
+
+    if(_dada_files.size() == 0) {
+        throw std::runtime_error("No input files provided for MultiFileReader");
+    }
+
 
     for(const auto& file: _dada_files) {
         std::ifstream f(file, std::ifstream::in | std::ifstream::binary);
@@ -56,6 +64,11 @@ MultiFileReader::MultiFileReader(std::vector<std::string> dada_files,std::size_t
         read_header(header_bytes);
         f.seekg(0, std::ios::end); // Move to the end of the file
         std::size_t size = f.tellg();
+
+        if (size < _dada_header_size) {
+            throw std::runtime_error("File " + file + " is too small to contain a header");
+        }
+
         _total_size += (size - _dada_header_size); // skip header
         _sizes.push_back(size - _dada_header_size);
         BOOST_LOG_TRIVIAL(debug)
@@ -97,6 +110,11 @@ void MultiFileReader::check_contiguity()
 MultiFileReader::~MultiFileReader()
 {
     this->close();
+}
+
+std::vector<std::string> const& MultiFileReader::get_dada_files() const
+{
+    return _dada_files;
 }
 
 void MultiFileReader::read_header(std::vector<char>& header_bytes)

@@ -36,6 +36,7 @@ class skyweaver::MultiFileReader
     std::size_t _dada_header_size;
     std::size_t _total_size;
     bool _is_open;
+    
 
     void read_header(std::vector<char>& headerBytes);
     void check_contiguity();
@@ -49,14 +50,18 @@ class skyweaver::MultiFileReader
     void open_previous();
     void close();
     void seekg(long pos, std::ios_base::seekdir dir = std::ios_base::beg);
+    
     std::size_t tellg() const;
     bool eof() const;
     bool good() const;
     bool can_read(std::size_t bytes) const;
     std::streamsize read(char* raw_ptr, std::streamsize bytes);
+    
+
     bool is_open() const;
     std::size_t
     safe_read(std::ifstream& input_stream, char* buffer, std::size_t nbytes);
+    std::vector<std::string> const& get_dada_files() const;
 
     std::size_t get_total_size() const;
 

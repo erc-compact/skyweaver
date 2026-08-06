@@ -37,6 +37,26 @@ class Header
     template <typename T>
     T get(char const* key) const;
 
+
+    /**
+      * @brief      Get a value from the header or return a default value
+      *
+      * @param      key            An ASCII key (the name of the value to get)
+      * @param[in]  default_value  The default value to return if the key is not found
+      *
+      * @tparam     T              The data type of the parameter to be read
+      *
+      * @return     The value corresponding to the given key or the default value
+     */
+    template <typename T>
+    T get_or_default(char const* key, T default_value) const{
+        if(has_key(key)){
+            return get<T>(key);
+        }
+        BOOST_LOG_TRIVIAL(warning) << "Header did not have key: " << key << ". Returning default value: " << default_value;
+        return default_value;
+    }
+
     /**
      * @brief      Set a value in the header
      *
@@ -72,6 +92,7 @@ class Header
 
   private:
     void fetch_header_string(char const* key) const;
+    bool has_key(char const* key) const;
 
   private:
     psrdada_cpp::RawBytes& _header;

@@ -13,13 +13,23 @@ namespace fs = std::filesystem;
 
 void create_directories(const fs::path& path)
 {
+   
     // Check if the directory already exists
     if(!fs::exists(path)) {
         // Directory does not exist, attempt to create it
-        if(!fs::create_directories(path)) {
+        // doing it via try catch for multi-threaded use
+        try{
+            fs::create_directories(path);
+        } catch (const std::filesystem::filesystem_error& e) {
+            if(!fs::exists(path)) {
+                throw std::runtime_error("Failed to create directory: " +
+                                        path.string());
+            }
+        } catch (const std::exception& e) {
             throw std::runtime_error("Failed to create directory: " +
-                                     path.string());
+                                    path.string());
         }
+
     } else if(!fs::is_directory(path)) {
         // Path exists but is not a directory
         throw std::runtime_error("Path exists but is not a directory: " +
@@ -28,15 +38,16 @@ void create_directories(const fs::path& path)
 }
 
 FileOutputStream::File::File(std::string const& fname, std::size_t bytes)
-    : _full_path(fname), _bytes_requested(bytes), _bytes_written(0)
+    : _full_path(fname), _bytes_requested(bytes), _bytes_written(0), _temporary_suffix(".tmp")
 {
+    _temporary_path = _full_path + _temporary_suffix;
     _stream.exceptions(std::ofstream::failbit | std::ofstream::badbit);
-    _stream.open(_full_path, std::ofstream::out | std::ofstream::binary);
+    _stream.open(_temporary_path, std::ofstream::out | std::ofstream::binary);
     if(_stream.is_open()) {
-        BOOST_LOG_TRIVIAL(info) << "Opened output file " << _full_path;
+        BOOST_LOG_TRIVIAL(info) << "Opened output file " << _temporary_path;
     } else {
         std::stringstream error_message;
-        error_message << "Could not open file " << _full_path;
+        error_message << "Could not open file " << _temporary_path;
         BOOST_LOG_TRIVIAL(error) << error_message.str();
         throw std::runtime_error(error_message.str());
     }
@@ -45,15 +56,29 @@ FileOutputStream::File::File(std::string const& fname, std::size_t bytes)
 FileOutputStream::File::~File()
 {
     if(_stream.is_open()) {
-        BOOST_LOG_TRIVIAL(info) << "Closing file " << _full_path;
+        BOOST_LOG_TRIVIAL(info) << "Closing file " << _temporary_path;
         _stream.close();
+    }
+    BOOST_LOG_TRIVIAL(info) << "Renaming file " << _temporary_path
+                            << " to " << _full_path;
+    int res = std::rename(_temporary_path.c_str(), _full_path.c_str());
+
+    // Can't throw an exception from a destructor,
+    // but we'll at least put a warning in the log!
+    if (res)
+    {
+        std::stringstream error_message;
+        error_message << "Error renaming file " << _temporary_path
+                      << " to " << _full_path
+                      << " (" << res << ").";
+        BOOST_LOG_TRIVIAL(error) << error_message.str();
     }
 }
 
 std::size_t FileOutputStream::File::write(char const* ptr, std::size_t bytes)
 {
     BOOST_LOG_TRIVIAL(debug)
-        << "Writing " << bytes << " bytes to " << _full_path;
+        << "Writing " << bytes << " bytes to " << _temporary_path;
     std::size_t bytes_remaining = _bytes_requested - _bytes_written;
     try {
         if(bytes > bytes_remaining) {
@@ -79,7 +104,7 @@ std::size_t FileOutputStream::File::write(char const* ptr, std::size_t bytes)
             reason = "eofbit set.";
         }
 
-        BOOST_LOG_TRIVIAL(error) << "Error while writing to " << _full_path
+        BOOST_LOG_TRIVIAL(error) << "Error while writing to " << _temporary_path
                                  << " (" << e.what() << ") because of reason: " << reason;
        
         throw;

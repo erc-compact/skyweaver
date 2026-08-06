@@ -23,4 +23,6 @@ eggs/
 core*
 report*
 CMakeCache.txt
+.nextflow
+*.bdm.db
 

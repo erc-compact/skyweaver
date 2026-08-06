@@ -150,7 +150,8 @@ def delays_create(
     bfconfig: str,
     pointing_idx: int = None,
     step: float = 4.0,
-    outfile: str = None):
+    outfile: str = None,
+    hex: bool = True):
     """Create a delay file
 
     Args:
@@ -160,6 +161,7 @@ def delays_create(
         step (float, optional): The time step between delay solutions. Defaults to 4.0 seconds.
         outfile (str, optional): The file to write delay models to. 
                                  Defaults to a standard output filename.
+        hex (bool, optional): Use hex encoding for the output filename. Defaults to True.
     """
     sm = skyweaver.SessionMetadata.from_file(metafile)
     bc = skyweaver.BeamformerConfig.from_file(bfconfig)
@@ -173,24 +175,31 @@ def delays_create(
         raise ValueError("Pointing idx {} requested but only {} pointings in session")
     step = step * u.s
     pointing = pointings[pointing_idx]
-    delays, targets, _ = skyweaver.create_delays(sm, bc, pointing, step=step)
+
     if outfile is None:
-        fname = "swdelays_{}_{}_to_{}_{}.bin".format(
-            pointing.phase_centre.name,
-            int(pointing.start_epoch.unix),
-            int(pointing.end_epoch.unix),
-            secrets.token_hex(3)
-        )
+        if hex:
+            fname = "swdelays_{}_{}_to_{}_{}".format(
+                pointing.phase_centre.name,
+                int(pointing.start_epoch.unix),
+                int(pointing.end_epoch.unix),
+                secrets.token_hex(3)
+            )
+        else:
+            fname = "swdelays_{}_{}_to_{}".format(
+                pointing.phase_centre.name,
+                int(pointing.start_epoch.unix),
+                int(pointing.end_epoch.unix)
+            )
     else:
         fname = outfile
-    log.info("Writing delay model to file %s", fname)
-    with open(fname, "wb") as fo:
-        for delay_model in delays:
-            fo.write(delay_model.to_bytes())
-    with open(fname + ".targets", "w") as fo:
-        for target in targets:
-            fo.write(target.format_katcp() +"\n")
-        
+    all_delays, _, _ = skyweaver.create_delays(sm, bc, pointing, step=step, outfile=fname)
+    
+    for name, delays in all_delays.items():
+        log.info(f"Writing delay model to file {fname}.bin")
+        with open(fname + f"_{name}_.bin", "wb") as fo:
+            for delay_model in delays:
+                fo.write(delay_model.to_bytes())
+    
 
 def parse_default_args(args):
     """Execute functions for common arguments
@@ -215,7 +224,7 @@ def cli():
     """
     parser = argparse.ArgumentParser(prog="skyweaver", add_help=True)
     l1subparsers = parser.add_subparsers(help="sub-command help")
-
+    
     # sw metadata
     metadata = l1subparsers.add_parser("metadata", help="Tools for observation metadata files")
     metadata_subparsers = metadata.add_subparsers(help="sub-command help")
@@ -255,13 +264,16 @@ def cli():
                                       help="An HDF5 FBFUSE-BVR metadata file")
     delays_create_parser.add_argument("bfconfig", metavar="BFCONFIG", 
                                       help="A YAML beamformer configuration file")
+    delays_create_parser.add_argument("--no-hex", action="store_false", dest="hex",
+                                      help="Do not use hex encoding for the output filename")
     delays_create_parser.set_defaults(
         func=lambda args: delays_create(
             args.metafile,
             args.bfconfig,
             args.pointing_idx,
             args.step,
-            args.outfile))
+            args.outfile,
+            args.hex))
 
     # parse and execute
     args = parser.parse_args()

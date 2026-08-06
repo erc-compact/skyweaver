@@ -47,6 +47,9 @@ IncoherentDedispersionPipeline<InputType, OutputType, Handler>::
         // TODO: give these sensible numbers
         // TODO: work out how to get the max delay into the handler
     }
+
+    // ceil division
+    _n_tdb_files = (_config.nbeams() + _config.nbeams_per_file() - 1) / _config.nbeams_per_file();
 }
 
 template <typename InputType, typename OutputType, typename Handler>
@@ -73,14 +76,56 @@ void IncoherentDedispersionPipeline<InputType, OutputType, Handler>::
     // Set the correct DMs on the block
     _output_buffers[ref_dm_idx].dms(plan[ref_dm_idx].incoherent_dms);
     _output_buffers[ref_dm_idx].reference_dm(plan[ref_dm_idx].coherent_dm);
-    _output_buffers[ref_dm_idx].frequencies({_config.centre_frequency() - _config.bandwidth() / 2.0});
+    _output_buffers[ref_dm_idx].frequencies(_config.channel_frequencies().front());
 
-    BOOST_LOG_TRIVIAL(debug) << "setting centre frequency to " << _output_buffers[ref_dm_idx].frequencies()[0];
-
+    BOOST_LOG_TRIVIAL(debug) << "setting centre frequency to " << std::setprecision(15) <<  _output_buffers[ref_dm_idx].frequencies()[0];
     BOOST_LOG_TRIVIAL(debug) << "Passing output buffer to handler: "
                              << _output_buffers[ref_dm_idx].describe();
     _timer.start("file writing");
-    _handler(_output_buffers[ref_dm_idx], ref_dm_idx);
+
+    if (_n_tdb_files > 1)
+    {
+        const std::size_t ndms     = _output_buffers[ref_dm_idx].ndms();
+        const std::size_t nbeams   = _output_buffers[ref_dm_idx].nbeams();
+        const std::size_t nsamples = _output_buffers[ref_dm_idx].nsamples();
+
+        std::size_t nbeams_per_file = _config.nbeams_per_file();
+        std::size_t td_input_offset = 0;
+        std::size_t td_output_offset = 0;
+        std::size_t b_offset = 0;
+        std::size_t tdb_file_idx = 0;
+
+        while (b_offset < nbeams)
+        {
+            if (b_offset + nbeams_per_file > nbeams)
+            {
+                nbeams_per_file = nbeams - b_offset;
+            }
+
+            _beamsplit_buffer.metalike(_output_buffers[ref_dm_idx]);
+            _beamsplit_buffer.resize({nsamples, ndms, nbeams_per_file});
+
+            for (std::size_t tdidx = 0; tdidx < nsamples * ndms; ++tdidx)
+            {
+                td_input_offset = tdidx * nbeams;
+                td_output_offset = tdidx * nbeams_per_file;
+
+                std::copy(&_output_buffers[ref_dm_idx][td_input_offset + b_offset],
+                          &_output_buffers[ref_dm_idx][td_input_offset + b_offset + nbeams_per_file],
+                          &_beamsplit_buffer[td_output_offset]);
+            }
+
+            _beamsplit_buffer.beam0_idx(b_offset);
+            _handler(_beamsplit_buffer, tdb_file_idx * _config.coherent_dms().size() + ref_dm_idx);
+
+            b_offset += nbeams_per_file;
+            tdb_file_idx++;
+        }
+    }
+    else
+    {
+        _handler(_output_buffers[ref_dm_idx], ref_dm_idx);
+    }
     _timer.stop("file writing");
 }
 
@@ -111,12 +156,6 @@ void IncoherentDedispersionPipeline<InputType, OutputType, Handler>::operator()(
     _output_buffers[ref_dm_idx].utc_offset(
         data.utc_offset() +
         _dedispersers[ref_dm_idx]->max_sample_delay() * data.tsamp());
-    BOOST_LOG_TRIVIAL(warning) << "Old UTC offset was " << data.utc_offset();
-    BOOST_LOG_TRIVIAL(warning) << "Incoherent Max delay is "
-                            << _dedispersers[ref_dm_idx]->max_sample_delay();
-    BOOST_LOG_TRIVIAL(warning) << "tsamp is " << data.tsamp();
-    BOOST_LOG_TRIVIAL(warning) << "Setting UTC offset to "
-                            << _output_buffers[ref_dm_idx].utc_offset();
     _agg_buffers[ref_dm_idx]->push_back(data.vector());
 }
 

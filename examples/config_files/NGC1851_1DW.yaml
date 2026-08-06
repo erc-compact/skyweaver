@@ -1,0 +1,45 @@
+---
+created_at: 2025-06-23
+created_by: Vishnu
+beamformer_config:
+  # The total number of beams to be produced (must be a multiple of 32)
+  total_nbeams: 384
+  # The number of time samples that will be accumulated after detection
+  tscrunch: 16
+  # The number of frequency channels that will be accumulated after detection
+  # Will be coerced to 1 if coherent dedispersion is specified.
+  fscrunch: 1
+  # The Stokes product to be calculated in the beamformer (I=0, Q=1, U=2, V=3)
+  stokes_mode: I
+  # Enable CB-IB subtraction in the beamformer
+  subtract_ib: True
+  # Dispersion measure for coherent dedispersion in pc cm^-3
+  # A dispersion plan definition string "
+  #           "(<coherent_dm>:<start_incoherent_dm>:"
+  #            "<end_incoherent_dm>:<dm_step>:<tscrunch>) or "
+  #           "(<coherent_dm>:<tscrunch>) "
+  #           "or (<coherent_dm>)")
+  #The coherent DMs key below is never used.
+  coherent_dms: [52.0]
+
+ddplan:
+  - "52:47:57:0.5:1"
+
+
+beam_sets:
+  - name: "1DW"
+  # 1 degree wide, 40 antennas, 0.5 degree overlap
+    antenna_set: ['m000','m001','m002','m003','m004','m005','m006','m007','m008',
+                  'm009','m010','m011','m012','m013','m014','m015','m016','m017','m018','m019','m020',
+                  'm021','m022','m023','m024','m025','m026','m027','m028',
+                  'm029','m030','m031','m032','m034','m035','m036','m037','m038','m042','m043']
+
+    beams: []
+
+    tilings:
+      - nbeams: 384
+        reference_frequency: null
+        target: "NGC1851,radec,05:14:06.697,-40:02:48.907"
+        overlap: 0.5
+
+

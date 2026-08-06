@@ -21,7 +21,7 @@ BufferedDispenser::BufferedDispenser(PipelineConfig const& config,
 
     for(std::size_t i = 0; i < _config.nchans(); i++) {
         _d_channeled_tpa_voltages[i].resize(
-            {_config.gulp_length_samps() +  dedisp_config.overlap_samps,
+            { _config.gulp_length_samps() +  dedisp_config.overlap_samps,
              _config.npol(),
              _config.nantennas()});
         _d_prev_channeled_tpa_voltages[i].resize(

@@ -29,7 +29,7 @@ class SigprocFileWriter
      */
     SigprocFileWriter();
     SigprocFileWriter(SigprocFileWriter const&) = delete;
-    ~SigprocFileWriter();
+    ~SigprocFileWriter()=default;
 
     /**
      * @brief      Set a tag to be used in the filename of generated files

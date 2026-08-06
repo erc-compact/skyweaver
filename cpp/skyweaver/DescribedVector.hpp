@@ -75,8 +75,7 @@ struct is_dv_copyable: std::false_type {
 };
 
 template <template <typename, typename> class Container1,
-          template <typename, typename>
-          class Container2,
+          template <typename, typename> class Container2,
           typename T,
           typename A1,
           typename A2,
@@ -106,7 +105,7 @@ struct DescribedVector {
      */
     DescribedVector()
         : _dms_stale(true), _frequencies_stale(true), _dims{dims...},
-          _tsamp(0.0)
+          _tsamp(0.0), _beam0_idx(0)
     {
     }
 
@@ -118,13 +117,31 @@ struct DescribedVector {
      */
     DescribedVector(std::initializer_list<std::size_t> sizes)
         : _dms_stale(true), _frequencies_stale(true), _sizes(sizes),
-          _dims{dims...}, _tsamp(0.0)
+          _dims{dims...}, _tsamp(0.0), _beam0_idx(0)
     {
         if(_sizes.size() != sizeof...(dims)) {
             throw std::invalid_argument(
                 "Number of sizes must match number of dimensions");
         }
         _vector.resize(calculate_nelements());
+    }
+
+    /**
+     * @brief Construct a new Described Vector object of specific size
+     *
+     * @param sizes The sizes of the dimensions (must match the number of
+     * dimensions)
+     */
+    DescribedVector(std::initializer_list<std::size_t> sizes,
+                    value_type default_value)
+        : _dms_stale(true), _frequencies_stale(true), _sizes(sizes),
+          _dims{dims...}, _tsamp(0.0), _beam0_idx(0)
+    {
+        if(_sizes.size() != sizeof...(dims)) {
+            throw std::invalid_argument(
+                "Number of sizes must match number of dimensions");
+        }
+        _vector.resize(calculate_nelements(), default_value);
     }
 
     /**
@@ -154,7 +171,8 @@ struct DescribedVector {
           _frequencies(other._frequencies), _dms_stale(other._dms_stale),
           _tsamp(other._tsamp), _utc_offset(other._utc_offset),
           _reference_dm(other._reference_dm),
-          _frequencies_stale(other._frequencies_stale)
+          _frequencies_stale(other._frequencies_stale),
+          _beam0_idx(other._beam0_idx)
     {
     }
 
@@ -189,6 +207,7 @@ struct DescribedVector {
         _tsamp             = other._tsamp;
         _utc_offset        = other._utc_offset;
         _reference_dm      = other._reference_dm;
+        _beam0_idx         = other._beam0_idx;
     }
 
     /**
@@ -212,6 +231,10 @@ struct DescribedVector {
      * underlying data is linear (flat indexing).
      */
     auto const& operator[](std::size_t idx) const { return _vector[idx]; }
+
+    // also the at() method
+    auto& at(std::size_t idx) { return _vector[idx]; }
+    auto const& at(std::size_t idx) const { return _vector[idx]; }
 
     /**
      * @brief Resize the dimensions of the vector
@@ -363,7 +386,25 @@ struct DescribedVector {
         }
         _frequencies_stale = false;
         _frequencies.resize(1, freq);
+        _frequencies[0] = freq;
     }
+
+    /**
+     * @brief Set the index of the first beam in the file
+     *
+     * @param index
+     */
+    void beam0_idx(std::size_t idx)
+    {
+        _beam0_idx = idx;
+    }
+
+    /**
+     * @brief Return the index of the first beam in the file
+     *
+     * @return std::size_t
+     */
+    std::size_t beam0_idx() const { return _beam0_idx; }
 
     /**
      * @brief Return the number of frequency channels
@@ -446,7 +487,6 @@ struct DescribedVector {
      *          in this parameter.
      */
     double utc_offset() const { return _utc_offset; }
-
 
     /**
      * @brief Set the latency of this data w.r.t. the stream
@@ -569,6 +609,7 @@ struct DescribedVector {
     double _tsamp       = 0.0;
     double _utc_offset  = 0.0;
     float _reference_dm = 0.0;
+    std::size_t _beam0_idx = 0;
     VectorType _vector;
 };
 
@@ -648,7 +689,7 @@ using BTFPowersH = DescribedVector<thrust::host_vector<T, PinnedAllocator<T>>,
 template <typename T>
 using BTFPowersD =
     DescribedVector<thrust::device_vector<T>, BeamDim, TimeDim, FreqDim>;
-// Incoherent dedisperser outputs
+// Incoherent dedisperser outputs, also used for skycleaver
 template <typename T>
 using TDBPowersH = DescribedVector<thrust::host_vector<T, PinnedAllocator<T>>,
                                    TimeDim,
@@ -666,6 +707,49 @@ using FPAStatsH = DescribedVector<thrust::host_vector<T, PinnedAllocator<T>>,
 template <typename T>
 using FPAStatsD =
     DescribedVector<thrust::device_vector<T>, FreqDim, PolnDim, AntennaDim>;
+
+// skycleaver vectors
+template <typename T>
+using TDBPowersStdH =
+    DescribedVector<std::vector<T>, TimeDim, DispersionDim, BeamDim, PolnDim>;
+template <typename T>
+using TFPowersStdH = DescribedVector<std::vector<T>, TimeDim, FreqDim>;
+
+template <typename DVType>
+class DoubleDescribedVector
+{
+  public:
+    // Constructor with perfect forwarding
+    template <typename... Args>
+    DoubleDescribedVector(Args&&... args)
+        : _a(std::forward<Args>(args)...), _b(std::forward<Args>(args)...),
+          _front(&_a), _back(&_b)
+    {
+    }
+
+    // Mutable access to front (active) buffer
+    DVType& a() { return *_front; }
+
+    // Const access to front (active) buffer
+    const DVType& a() const { return *_front; }
+    const DVType& a_ref() const { return *_front; } // optional alias
+
+    // Mutable access to back (staging) buffer
+    DVType& b() { return *_back; }
+
+    // Const access to back (staging) buffer
+    const DVType& b() const { return *_back; }
+    const DVType& b_ref() const { return *_back; } // optional alias
+
+    // Swap front and back buffers
+    void swap() { std::swap(_front, _back); }
+
+  private:
+    DVType _a;
+    DVType _b;
+    DVType* _front;
+    DVType* _back;
+};
 
 } // namespace skyweaver
 

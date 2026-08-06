@@ -24,7 +24,7 @@ void Header::purge()
 
 void Header::fetch_header_string(char const* key) const
 {
-    if(ascii_header_get(_header.ptr(), key, "%s", _buffer) == -1) {
+    if(!has_key(key)) {
         throw std::runtime_error(std::string("Could not find ") + key +
                                  " key in DADA header.");
     }
@@ -33,6 +33,13 @@ void Header::fetch_header_string(char const* key) const
                                  " was unset");
     }
 }
+
+bool Header::has_key(char const* key) const
+{
+    return ascii_header_get(_header.ptr(), key, "%s", _buffer) != -1;
+}
+
+
 
 template <>
 long double Header::get<long double>(char const* key) const
@@ -67,7 +74,7 @@ void Header::set<long double>(char const* key, long double value)
 {
     BOOST_LOG_TRIVIAL(debug)
         << "Header set: " << key << " = " << std::setprecision(15) << value;
-    ascii_header_set(this->_header.ptr(), key, "%Lf", value);
+    ascii_header_set(this->_header.ptr(), key, "%Lg", value);
 }
 
 template <>

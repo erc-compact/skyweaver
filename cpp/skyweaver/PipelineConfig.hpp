@@ -166,6 +166,26 @@ class PipelineConfig
     bool enable_incoherent_dedispersion() const;
 
     /**
+     * @brief      Enable/disable calculation and writing of voltage statistics
+     */
+    void output_statistics(bool enable);
+
+    /**
+     * @brief      Check if calculation of voltage statistics is enabled
+     */
+    bool output_statistics() const;
+
+    /**
+     * @brief      Enable/disable writing out the incoherent beam
+     */
+    void output_incoherent_beam(bool enable);
+
+    /**
+     * @brief      Check if outputting incoherent beam is enabled
+     */
+    bool output_incoherent_beam() const;
+
+    /**
      * @brief      Return the number of time samples to be integrated
      *             in the coherent beamformer.
      */
@@ -271,7 +291,18 @@ class PipelineConfig
     /**
      * @brief      Return the total number of antennas that will be beamformed
      */
+
     std::size_t nantennas() const { return SKYWEAVER_NANTENNAS; }
+
+    /**
+     * @brief      Set the number of beams per output file
+     */
+    void nbeams_per_file(std::size_t nbeams_per_file);
+
+    /**
+     * @brief      Get the number of beams per output file
+     */
+    std::size_t nbeams_per_file() const;
 
     /**
      * @brief      Return the total number of frequency channels in the input
@@ -339,6 +370,8 @@ class PipelineConfig
     std::size_t _max_output_filesize;
     std::string _output_file_prefix;
     bool _enable_incoherent_dedispersion;
+    bool _output_statistics;
+    bool _output_incoherent_beam;
     double _cfreq;
     double _bw;
     mutable bool _channel_frequencies_stale;
@@ -350,6 +383,7 @@ class PipelineConfig
     float _output_level;
     DedispersionPlan _ddplan;
     mutable std::vector<double> _channel_frequencies;
+    std::size_t _nbeams_per_file;
 };
 
 } // namespace skyweaver
